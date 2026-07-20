@@ -1,0 +1,39 @@
+# Delphi build output
+Win32/
+Win64/
+OSX32/
+OSX64/
+Android/
+iOSDevice*/
+iOSSimulator*/
+__history/
+__recovery/
+
+# Compiled and generated files
+*.dcu
+*.exe
+*.dll
+*.bpl
+*.dcp
+*.map
+*.tds
+*.rsm
+
+# Local IDE and user settings
+*.dproj.local
+*.identcache
+*.dsk
+*.ddp
+*.stat
+
+# Delphi backup files
+*.~*
+*.bak
+
+# Common editor and operating-system files
+.vs/
+.vscode/
+*.suo
+*.user
+Thumbs.db
+.DS_Store
