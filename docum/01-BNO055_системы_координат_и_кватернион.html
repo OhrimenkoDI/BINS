@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BNO055: системы координат и кватернион модели летательного аппарата</title>
+  <style>
+    body { max-width: 980px; margin: 40px auto; padding: 0 24px; color: #17202a; font: 17px/1.55 "Segoe UI", Arial, sans-serif; }
+    h1, h2 { color: #123b5d; } h1 { border-bottom: 3px solid #2e86c1; padding-bottom: 12px; }
+    code, pre { font-family: Consolas, monospace; background: #f3f6f8; }
+    code { padding: 2px 5px; } pre { padding: 14px; overflow-x: auto; border-left: 4px solid #2e86c1; }
+    .formula { margin: 12px 0; padding: 10px 14px; background: #eef6fb; font-family: Cambria, serif; font-size: 1.08em; }
+    .summary { padding: 16px; background: #eef9f1; border: 1px solid #8bc99a; }
+  </style>
+</head>
+<body>
+<h1>BNO055: системы координат и кватернион модели летательного аппарата</h1>
+
+<h2>1. Принятые системы координат</h2>
+<h3>Связанная система аппарата Body FRD</h3>
+<ul><li><code>Xb</code> — вперёд.</li><li><code>Yb</code> — вправо.</li><li><code>Zb</code> — вниз.</li></ul>
+<p>Начало координат желательно располагать в центре масс. Это правая система: <code>Xb × Yb = Zb</code>. Вектор угловой скорости <code>ωb = (p,q,r)</code>: крен вокруг Xb, тангаж вокруг Yb, рыскание вокруг Zb.</p>
+<h3>Навигационная система NED</h3>
+<ul><li><code>Xn</code> — север.</li><li><code>Yn</code> — восток.</li><li><code>Zn</code> — вниз.</li></ul>
+<p>При горизонтальном положении и направлении носа на север Body и NED совпадают, поэтому единичный кватернион задаёт исходную ориентацию.</p>
+
+<h2>2. Смысл кватерниона</h2>
+<p><code>q_nb</code> переводит вектор из Body в NED:</p>
+<div class="formula">v<sub>n</sub> = q<sub>nb</sub> ⊗ v<sub>b</sub> ⊗ q<sub>nb</sub>*</div>
+<pre>VectorN := Q * VectorB * Q.Inverse;
+OXn := Q * OXb * Q.Inverse;
+OYn := Q * OYb * Q.Inverse;
+OZn := Q * OZb * Q.Inverse;</pre>
+
+<h2>3. Интегрирование угловой скорости</h2>
+<p>Компоненты гироскопа образуют один вектор, а не три угла Эйлера. За шаг: <code>dTheta = ωb·dt</code>, <code>Angle = |dTheta|</code>, <code>Axis = dTheta/Angle</code>.</p>
+<pre>DX := P * Dt;
+DY := QRate * Dt;
+DZ := R * Dt;
+Angle := Sqrt(DX*DX + DY*DY + DZ*DZ);
+if Angle &gt; 0 then
+begin
+  Axis := TPoint3D.Create(DX / Angle, DY / Angle, DZ / Angle);
+  DeltaQ := TQuaternion.Create(Axis, Angle);
+  Orientation := (Orientation * DeltaQ).Normalize;
+end;</pre>
+<div class="formula">q̇<sub>nb</sub> = ½ q<sub>nb</sub> ⊗ [0,p,q,r]</div>
+
+<h2>4. Установка и оси BNO055</h2>
+<p>После настройки: <code>BNO X → нос</code>, <code>BNO Y → правое крыло</code>, <code>BNO Z → вниз</code>.</p>
+<ul><li><code>AXIS_MAP_CONFIG = 0x41</code></li><li><code>AXIS_MAP_SIGN = 0x42</code></li></ul>
+<p>Настройка выполняется в CONFIGMODE после каждого включения. Она поддерживает перестановку осей и знаки; произвольный угол установки требует постоянного установочного кватерниона. См. <a href="https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bno055-ds000.pdf">Bosch BNO055 Datasheet</a>, раздел 3.4.</p>
+
+<h2>5. Установочный кватернион</h2>
+<p><code>S</code> — Sensor, <code>B</code> — Body, <code>N</code> — NED. Если <code>q_ns</code> получен от датчика, а <code>q_bs</code> переводит Sensor → Body:</p>
+<div class="formula">q<sub>nb</sub> = q<sub>ns</sub> ⊗ q<sub>sb</sub>, где q<sub>sb</sub> = q<sub>bs</sub><sup>−1</sup></div>
+<pre>QBody := QBNO * QSensorToBody.Inverse;</pre>
+<p>Если axis remap уже совместил BNO055 с FRD, установочный кватернион единичный и <code>QBody := QBNO</code>.</p>
+
+<h2>6. Формат кватерниона BNO055</h2>
+<p>Порядок компонент: <code>W, X, Y, Z</code>. Это знаковые 16-битные значения, масштаб 2<sup>14</sup> LSB на единицу. Регистры: <code>0x20…0x27</code>.</p>
+<pre>QBNO.w := RawW / 16384.0;
+QBNO.x := RawX / 16384.0;
+QBNO.y := RawY / 16384.0;
+QBNO.z := RawZ / 16384.0;
+QBNO := QBNO.Normalize;</pre>
+
+<h2>7. Windows или Android</h2>
+<p>Бит 7 <code>UNIT_SEL</code>: 0 — Windows, 1 — Android. Формат задаётся явно при каждой инициализации. Вход датчика один раз приводится к принятому соглашению FRD/NED.</p>
+
+<h2>8. Проверка направления</h2>
+<ol><li>Горизонтально, нос на север: после привязки <code>Q ≈ (1,0,0,0)</code>.</li><li>Положительный крен проверяет ось X.</li><li>Положительные тангаж и рыскание проверяют Y и Z.</li></ol>
+<p>Относительная ориентация: <code>q_relative = q0⁻¹ ⊗ q_BNO</code>. Если все направления обратны, проверить необходимость <code>QBNO.Inverse</code>. Ошибку одной оси исправлять через axis remap/sign.</p>
+
+<h2>9. Поступательная динамика</h2>
+<div class="formula">v̇<sub>n</sub> = R(q<sub>nb</sub>)·f<sub>b</sub> + g<sub>n</sub>, &nbsp; g<sub>n</sub>=(0,0,+9.80665) м/с²</div>
+<pre>PositionNED       = (North, East, Down)
+VelocityNED       = (Vn, Ve, Vd)
+Orientation       = q_nb
+AngularRateBody   = (p, q, r)
+SpecificForceBody = (fx, fy, fz)</pre>
+
+<h2>10. Итоговое соглашение</h2>
+<pre class="summary">Корпус:     FRD — X вперёд, Y вправо, Z вниз
+Навигация:  NED — X север, Y восток, Z вниз
+Кватернион: q_nb, Body → NED
+Гироскоп:   (p, q, r) в Body
+Обновление: q := Normalize(q * DeltaQ)
+BNO055:     axis remap в FRD, W/X/Y/Z делятся на 16384</pre>
+</body>
+</html>
