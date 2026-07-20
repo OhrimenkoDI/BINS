@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Кватернион, матрица и Euler в Body FRD / NED</title>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+  <style>
+    body{max-width:960px;margin:38px auto;padding:0 24px;color:#17202a;font:17px/1.58 "Segoe UI",Arial,sans-serif}h1,h2{color:#123b5d}h1{text-align:center;border-bottom:3px solid #2e86c1;padding-bottom:14px}h2{margin-top:1.8em;border-bottom:1px solid #aeb6bf}code,pre{font-family:Consolas,monospace;background:#f3f6f8}code{padding:2px 5px}pre{padding:14px;border-left:4px solid #2e86c1;overflow:auto}table{width:100%;border-collapse:collapse}th,td{border:1px solid #85929e;padding:8px}th{background:#eaf2f8}.f{padding:11px 15px;margin:13px 0;background:#eef6fb;text-align:center}.note{padding:14px;background:#fff8e6;border-left:4px solid #e6a700}.summary{padding:14px;background:#eef9f1;border:1px solid #8bc99a}
+  </style>
+</head>
+<body>
+<h1>Кватернион, матрица поворота и Euler<br>в Body FRD / NED</h1>
+<div class="summary"><b>Соглашение:</b> Body FRD — X вперёд, Y вправо, Z вниз; NED — X север, Y восток, Z вниз. (q_{nb}) и (R_{nb}) переводят Body → NED.</div>
+
+<h2>1. Системы координат</h2>
+<p>Body FRD и NED являются правыми системами. Угловая скорость (\omega_b=(p,q,r)): крен вокруг X, тангаж вокруг Y, рыскание вокруг Z. При горизонтальном положении и направлении носа на север (q_{nb}=(1,0,0,0)).</p>
+
+<h2>2. Кватернион Body → NED</h2>
+<div class="f">\[\mathbf v_n=q_{nb}\otimes\mathbf v_b\otimes q_{nb}^{*}\]</div>
+<p>Используется порядок (q=(w,x,y,z)). Для единичного кватерниона (q^{-1}=q^*=(w,-x,-y,-z)).</p>
+
+<h2>3. Матрица поворота</h2>
+<div class="f">\[R_{nb}=\begin{pmatrix}1-2(y^2+z^2)&2(xy-wz)&2(xz+wy)\\2(xy+wz)&1-2(x^2+z^2)&2(yz-wx)\\2(xz-wy)&2(yz+wx)&1-2(x^2+y^2)\end{pmatrix}\]</div>
+<div class="f">\[\mathbf v_n=R_{nb}\mathbf v_b,\qquad R_{bn}=R_{nb}^{T}\]</div>
+<table><tr><th>Столбец</th><th>Ось Body</th><th>Вектор в NED</th></tr><tr><td>1</td><td>X Forward</td><td>(R11,R21,R31)</td></tr><tr><td>2</td><td>Y Right</td><td>(R12,R22,R32)</td></tr><tr><td>3</td><td>Z Down</td><td>(R13,R23,R33)</td></tr></table>
+
+<h2>4. Проекции</h2>
+<table><tr><th>Вид</th><th>Экран</th><th>Компоненты</th></tr><tr><td>сверху X–Y</td><td>North вверх, East вправо</td><td>N,E</td></tr><tr><td>сбоку X–Z</td><td>North вправо, Down вниз</td><td>N,D</td></tr><tr><td>спереди Y–Z</td><td>East вправо, Down вниз</td><td>E,D</td></tr></table>
+
+<h2>5. Интегрирование гироскопа</h2>
+<div class="f">\[\Delta\theta=\omega_bdt,\quad \theta=|\Delta\theta|,\quad e=\Delta\theta/\theta\]</div>
+<p>Создаётся один (\Delta q=Quaternion(e,\theta)), после чего:</p>
+<div class="f">\[q_{nb}^{new}=Normalize(q_{nb}\otimes\Delta q),\qquad \dot q_{nb}=\tfrac12q_{nb}\otimes[0,p,q,r]\]</div>
+<div class="note">(p,q,r) — компоненты одного вектора угловой скорости, а не три последовательных угла Эйлера.</div>
+
+<h2>6. Euler ZYX только для отображения</h2>
+<div class="f">\[R_{nb}=R_z(\psi)R_y(\theta)R_x(\phi)\]</div>
+<div class="f">\[\theta=-\arcsin R_{31},\quad \phi=atan2(R_{32},R_{33}),\quad \psi=atan2(R_{21},R_{11})\]</div>
+<div class="f">\[\phi=atan2(2(wx+yz),1-2(x^2+y^2))\]\[\theta=\arcsin(2(wy-zx))\]\[\psi=atan2(2(wz+xy),1-2(y^2+z^2))\]</div>
+<p>Положительный Roll опускает правое крыло, положительный Pitch поднимает нос, положительный Yaw поворачивает вправо. При (|Pitch|=90°) Euler имеет gimbal lock, кватернион и матрица остаются корректными.</p>
+
+<h2>7. Однородная матрица</h2>
+<div class="f">\[T_{nb}=\begin{pmatrix}R_{11}&R_{12}&R_{13}&N\\R_{21}&R_{22}&R_{23}&E\\R_{31}&R_{32}&R_{33}&D\\0&0&0&1\end{pmatrix}\]</div>
+
+<h2>8. BNO055</h2>
+<ul><li>После axis remap: X к носу, Y к правому крылу, Z вниз.</li><li>Порядок W/X/Y/Z; каждое signed int16 делится на 16384.</li><li>Кватернион: 0x20…0x27; remap: 0x41 и 0x42.</li><li>Windows/Android явно приводится к FRD/NED.</li><li>Произвольный монтаж компенсируется установочным кватернионом.</li></ul>
+
+<h2>9. Проверки</h2>
+<ol><li>Нос на север: q≈identity.</li><li>Roll+: R32&gt;0.</li><li>Pitch+: R31&lt;0.</li><li>Yaw+: R21&gt;0.</li><li>(R^TR=I, det(R)=+1).</li></ol>
+
+<h2>10. Итог</h2>
+<pre class="summary">Body:       FRD — X вперёд, Y вправо, Z вниз
+Navigation: NED — X север, Y восток, Z вниз
+Quaternion: q_nb, Body → NED, W/X/Y/Z
+Matrix:     vn = R_nb × vb
+Update:     q_nb := Normalize(q_nb × DeltaQ)
+Euler:      только отображение ZYX</pre>
+</body>
+</html>

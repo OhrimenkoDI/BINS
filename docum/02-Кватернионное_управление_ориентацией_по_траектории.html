@@ -63,6 +63,7 @@ r_cmd = Kz · φz</pre>
            → p/q/r → контур скорости → приводы</pre>
 
 <h2>10. Итоговый закон</h2>
+<p><strong>Связанный документ:</strong> <a href="03-Расчёт_угловых_скоростей_между_кватернионами.html">03 — Расчёт угловых скоростей между двумя кватернионами</a> описывает переход за фиксированное время и может служить генератором <code>qref(t)</code> и <code>ωff(t)</code> для этого регулятора.</p>
 <div class="result">q<sub>ref</sub> = Slerp(q<sub>0</sub>,q<sub>h</sub>,τ)<br>
 q<sub>e</sub> = q<sup>−1</sup> ⊗ q<sub>ref</sub><br>
 ω<sub>cmd</sub> = ω<sub>ff</sub> + K<sub>R</sub>Log(q<sub>e</sub>)</div>

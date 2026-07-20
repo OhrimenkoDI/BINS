@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Доворот Yaw для горизонтального положения оси Y</title>
+  <style>
+    body { max-width: 980px; margin: 40px auto; padding: 0 24px; color: #17202a; font: 17px/1.55 "Segoe UI", Arial, sans-serif; }
+    h1, h2 { color: #123b5d; } h1 { border-bottom: 3px solid #2e86c1; padding-bottom: 12px; }
+    code, pre { font-family: Consolas, monospace; background: #f3f6f8; }
+    code { padding: 2px 5px; } pre { padding: 14px; overflow-x: auto; border-left: 4px solid #2e86c1; }
+    .formula { margin: 12px 0; padding: 11px 15px; background: #eef6fb; font-family: Cambria, serif; font-size: 1.1em; }
+    .result { padding: 16px; background: #eef9f1; border: 1px solid #8bc99a; font-size: 1.15em; }
+    .warning { padding: 14px; background: #fff8e6; border-left: 4px solid #e6a700; }
+  </style>
+</head>
+<body>
+<h1>Доворот Yaw для горизонтального положения оси Y</h1>
+
+<h2>1. Постановка задачи</h2>
+<p>Используются Body FRD и NED; <code>q=q_nb</code> переводит Body → NED. Yaw выполняется вокруг локальной Body Z, а приращение применяется справа: <code>qnew=q⊗DeltaQz</code>.</p>
+<p class="warning">Yaw не выравнивает платформу: он не меняет ось Z. Он может сделать горизонтальной одну ось, совместив её с линией пересечения плоскости платформы и горизонтальной плоскости.</p>
+<p class="warning"><strong>Обозначение:</strong> специальный доворот называется <code>ψ_align</code>. Он не совпадает с Euler Yaw <code>ψ</code> текущей ориентации из документа 05; это отдельное управляющее приращение вокруг локальной Z.</p>
+
+<h2>2. Вертикальные компоненты</h2>
+<div class="formula">X<sub>n</sub>=q⊗X<sub>b</sub>⊗q<sup>−1</sup><br>Y<sub>n</sub>=q⊗Y<sub>b</sub>⊗q<sup>−1</sup></div>
+<p>Обозначим <code>XD=Xn.Z</code> и <code>YD=Yn.Z</code>. В NED горизонтальная ось имеет нулевую компоненту Z.</p>
+
+<h2>3. Вывод угла</h2>
+<p>После локального доворота:</p>
+<div class="formula">Y'<sub>n</sub>=−sin(ψ<sub>align</sub>)X<sub>n</sub>+cos(ψ<sub>align</sub>)Y<sub>n</sub><br>Y'<sub>D</sub>=−XD·sin(ψ<sub>align</sub>)+YD·cos(ψ<sub>align</sub>)</div>
+<p>Из условия <code>Y'D=0</code>:</p>
+<div class="result">ψ<sub>align</sub> = atan2(YD, XD)</div>
+<pre>XD = oX3.z
+YD = oY3.z
+YawAlign = atan2(YD, XD)
+DeltaQz = Quaternion((0,0,1), YawAlign)
+qnew = q × DeltaQz</pre>
+
+<h2>4. Два решения</h2>
+<p><code>ψ_align</code> и <code>ψ_align+π</code> оба делают Y горизонтальной, но направляют её противоположно. Для минимального доворота:</p>
+<pre>ψ_align = atan2(YD, XD)
+if ψ_align &gt;  π/2: ψ_align = ψ_align − π
+if ψ_align &lt; −π/2: ψ_align = ψ_align + π</pre>
+<p>Если требуется конкретное направление +Y, решение выбирается по скалярному произведению с заданным горизонтальным направлением.</p>
+
+<h2>5. Горизонтальная платформа</h2>
+<p>При <code>XD=YD=0</code> ось Y горизонтальна при любом Yaw. Поэтому перед <code>atan2</code> проверяется <code>sqrt(XD²+YD²)&lt;ε</code>; результатом становится <code>ψ_align=0</code>.</p>
+
+<h2>6. Формула через компоненты кватерниона</h2>
+<p>Для нормализованного <code>q=(w,x,y,z)</code>:</p>
+<div class="formula">XD=2(xz−wy)<br>YD=2(yz+wx)</div>
+<div class="result">ψ<sub>align</sub> = atan2(yz+wx, xz−wy)</div>
+<p>В произведениях выше x, y, z и w являются компонентами кватерниона.</p>
+
+<h2>7. Проверка знака</h2>
+<p>Формула соответствует <code>qnew=q⊗DeltaQz</code>. Если привод считает положительный Yaw противоположно, используется <code>−ψ_align</code>. Для проверки платформу наклоняют вокруг X: при <code>YD≠0</code> и <code>XD≈0</code> доворот будет близок к ±90°.</p>
+
+<h2>8. Итог</h2>
+<div class="result">ψ<sub>align</sub>=atan2(Y<sub>n</sub>.Z, X<sub>n</sub>.Z)<br><br>ψ<sub>align</sub>=atan2(yz+wx, xz−wy)</div>
+</body>
+</html>
