@@ -167,33 +167,41 @@ begin
     ComboCOM.Items.Add('COM'+inttostr(i));
   ComboCOM.ItemIndex:=7;
 
+  // Image1: вид справа, плоскость X-Z (Body FRD).
+  // X направлена вправо (вперёд), Z направлена вниз.
   fixyz1[0]:=0;
   fixyz1[1]:=0;
-  fixyz1[2]:=90;
+  fixyz1[2]:=-90;
   muxyz1[0]:=200;
   muxyz1[1]:=  0;
   muxyz1[2]:=200;
 
+  // Image2: вид спереди, плоскость Y-Z.
+  // Y направлена вправо, Z направлена вниз.
   fixyz2[0]:=0;
   fixyz2[1]:=0;
-  fixyz2[2]:=90;
+  fixyz2[2]:=-90;
   muxyz2[0]:=0;
   muxyz2[1]:=200;
   muxyz2[2]:=200;
 
-  fixyz3[0]:=0;
-  fixyz3[1]:=-90;
+  // Image3: вид сверху, плоскость X-Y.
+  // X (нос) направлена вверх, Y (правое крыло) направлена вправо.
+  fixyz3[0]:=90;
+  fixyz3[1]:=0;
   fixyz3[2]:=0;
   muxyz3[0]:=200;
   muxyz3[1]:=200;
   muxyz3[2]:=  0;
 
-  fixyz4[0]:=-30;
-  fixyz4[1]:=-150;
-  fixyz4[2]:=90;
-  muxyz4[0]:=200;
-  muxyz4[1]:=200;
-  muxyz4[2]:=200;
+  // Image4: аксонометрия Body FRD.
+  // X: вправо-вверх 60 градусов; Y: вправо-вниз 30 градусов; Z: вниз.
+  fixyz4[0]:=30;
+  fixyz4[1]:=-30;
+  fixyz4[2]:=-90;
+  muxyz4[0]:=180;
+  muxyz4[1]:=180;
+  muxyz4[2]:=180;
 
   redraw;
  end;
@@ -206,6 +214,8 @@ end;
 
 procedure TMainForm.UpdateQuaternionAxes;
 begin
+  // q3 = q_nb: преобразование из Body FRD в навигационную систему.
+  // Получаем направления Forward, Right и Down после поворота аппарата.
   oX3 := q3 * oX * q3.Inverse;
   oY3 := q3 * oY * q3.Inverse;
   oZ3 := q3 * oZ * q3.Inverse;

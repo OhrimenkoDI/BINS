@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Кватернионное управление ориентацией по траектории</title>
+  <style>
+    body { max-width: 980px; margin: 40px auto; padding: 0 24px; color: #17202a; font: 17px/1.55 "Segoe UI", Arial, sans-serif; }
+    h1, h2 { color: #123b5d; } h1 { border-bottom: 3px solid #2e86c1; padding-bottom: 12px; }
+    code, pre { font-family: Consolas, monospace; background: #f3f6f8; }
+    code { padding: 2px 5px; } pre { padding: 14px; overflow-x: auto; border-left: 4px solid #2e86c1; }
+    .formula { margin: 12px 0; padding: 11px 15px; background: #eef6fb; font-family: Cambria, serif; font-size: 1.08em; }
+    .result { padding: 16px; background: #eef9f1; border: 1px solid #8bc99a; font-size: 1.08em; }
+  </style>
+</head>
+<body>
+<h1>Кватернионное управление ориентацией по траектории</h1>
+
+<h2>1. Постановка задачи</h2>
+<p>На уровне H0 аппарат имеет произвольную ориентацию <code>q0</code>; на уровне Hh требуется получить <code>qh</code>. Управление задаётся единым вектором угловой скорости в Body FRD: <code>ωcmd=(p_cmd,q_cmd,r_cmd)</code>.</p>
+<pre>высота/время → qref → ошибка qe → (p,q,r) → контур гироскопов</pre>
+
+<h2>2. Slerp как генератор траектории</h2>
+<div class="formula">q<sub>ref</sub>(s) = Slerp(q<sub>0</sub>,q<sub>h</sub>,s), &nbsp; s∈[0,1]</div>
+<p>Slerp проходит кратчайшую геодезическую и задаёт один результирующий поворот. Если <code>dot(q0,qh)&lt;0</code>, следует заменить <code>qh:=−qh</code>, поскольку q и −q обозначают одинаковую ориентацию.</p>
+
+<h2>3. Плавный прогресс</h2>
+<div class="formula">s = clamp((H−H0)/(Hh−H0),0,1)</div>
+<p>Чтобы исключить скачки скорости и ускорения на границах:</p>
+<div class="formula">τ(s)=10s³−15s⁴+6s⁵, &nbsp; q<sub>ref</sub>=Slerp(q<sub>0</sub>,q<sub>h</sub>,τ)</div>
+<p>Высоту необходимо фильтровать. При остановках или возврате по высоте предпочтителен монотонный параметр прогресса либо временная траектория с коррекцией по высоте.</p>
+
+<h2>4. Кватернион ошибки</h2>
+<p>Для соглашения <code>q=q_nb</code>, Body FRD → NED:</p>
+<div class="formula">q<sub>e</sub> = q<sup>−1</sup> ⊗ q<sub>ref</sub>, &nbsp; q<sub>ref</sub>=q⊗q<sub>e</sub></div>
+<p>Если <code>qe.w&lt;0</code>, применяется <code>qe:=−qe</code>, чтобы ошибка представляла поворот не более 180°.</p>
+
+<h2>5. Единый вектор ошибки вращения</h2>
+<p>Пусть <code>qe=(w,v)</code>. Тогда:</p>
+<div class="formula">θ=2·atan2(|v|,w), &nbsp; e=v/|v|, &nbsp; φ=θe=Log(q<sub>e</sub>)</div>
+<p>Компоненты <code>φ=(φx,φy,φz)</code> выражены в Body FRD. Для малой ошибки возможно приближение <code>φ≈2v</code>, но для произвольной ориентации используется полная формула.</p>
+
+<h2>6. Задание угловой скорости</h2>
+<div class="formula">ω<sub>cmd</sub> = K<sub>R</sub>φ</div>
+<pre>p_cmd = Kx · φx
+q_cmd = Ky · φy
+r_cmd = Kz · φz</pre>
+<p>Это компоненты одного вектора, а не скорости углов Эйлера. Для точного слежения за движущимся заданием:</p>
+<div class="formula">ω<sub>cmd</sub> = ω<sub>ff</sub> + K<sub>R</sub>φ</div>
+
+<h2>7. Ограничение скорости</h2>
+<p>Ограничивается норма единого вектора: <code>|ωcmd|≤ωmax</code>. При превышении:</p>
+<div class="formula">ω<sub>cmd</sub> := ω<sub>cmd</sub> · ω<sub>max</sub>/|ω<sub>cmd</sub>|</div>
+<p>Так сохраняется ось вращения. При разных пределах приводов применяется эллипсоид: <code>(p/pmax)²+(q/qmax)²+(r/rmax)²≤1</code>.</p>
+
+<h2>8. Внутренний контур</h2>
+<div class="formula">τ<sub>cmd</sub> = K<sub>ω</sub>(ω<sub>cmd</sub>−ω<sub>meas</sub>)</div>
+<p>Внутренний регулятор использует гироскоп и учитывает динамику, ограничения приводов, интегральную составляющую и anti-windup.</p>
+
+<h2>9. Связь с траекторией полёта</h2>
+<p>Крен и тангаж меняют направление тяги. Навигационный контур должен формировать физически достижимый <code>qref</code> и сохранять достаточную вертикальную составляющую тяги.</p>
+<pre>навигация → допустимый qref → регулятор SO(3)
+           → p/q/r → контур скорости → приводы</pre>
+
+<h2>10. Итоговый закон</h2>
+<div class="result">q<sub>ref</sub> = Slerp(q<sub>0</sub>,q<sub>h</sub>,τ)<br>
+q<sub>e</sub> = q<sup>−1</sup> ⊗ q<sub>ref</sub><br>
+ω<sub>cmd</sub> = ω<sub>ff</sub> + K<sub>R</sub>Log(q<sub>e</sub>)</div>
+<p>Slerp задаёт ориентационную траекторию, Log(qe) — единую локальную ось и угол ошибки, а регулятор формирует единый вектор заданной угловой скорости.</p>
+</body>
+</html>

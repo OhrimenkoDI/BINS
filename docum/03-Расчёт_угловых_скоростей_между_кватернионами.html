@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Расчёт угловых скоростей между двумя кватернионами</title>
+  <style>
+    body { max-width: 980px; margin: 40px auto; padding: 0 24px; color: #17202a; font: 17px/1.55 "Segoe UI", Arial, sans-serif; }
+    h1, h2 { color: #123b5d; } h1 { border-bottom: 3px solid #2e86c1; padding-bottom: 12px; }
+    code, pre { font-family: Consolas, monospace; background: #f3f6f8; }
+    code { padding: 2px 5px; } pre { padding: 14px; overflow-x: auto; border-left: 4px solid #2e86c1; }
+    .formula { margin: 12px 0; padding: 11px 15px; background: #eef6fb; font-family: Cambria, serif; font-size: 1.08em; }
+    .result { padding: 16px; background: #eef9f1; border: 1px solid #8bc99a; font-size: 1.15em; }
+  </style>
+</head>
+<body>
+<h1>Расчёт угловых скоростей между двумя кватернионами</h1>
+
+<h2>1. Исходные данные</h2>
+<p><code>q0</code> и <code>q1</code> — нормализованные ориентации Body FRD → NED; <code>T</code> — время перехода. Требуется получить <code>ωb=(p,q,r)</code> в локальных осях аппарата.</p>
+
+<h2>2. Относительный кватернион</h2>
+<div class="formula">q<sub>e</sub> = q<sub>0</sub><sup>−1</sup> ⊗ q<sub>1</sub>, &nbsp; q<sub>1</sub>=q<sub>0</sub>⊗q<sub>e</sub></div>
+<p>Для единичного кватерниона обратный равен сопряжённому. Если <code>qe.w&lt;0</code>, применяется <code>qe:=−qe</code>, чтобы выбрать кратчайший поворот.</p>
+
+<h2>3. Ось и угол</h2>
+<p>Пусть <code>qe=(w,x,y,z)</code>.</p>
+<div class="formula">v=√(x²+y²+z²)<br>θ=2·atan2(v,w)<br>e=(x/v,y/v,z/v)</div>
+<p>При близком к нулю <code>v</code> поворот отсутствует.</p>
+
+<h2>4. Вектор поворота</h2>
+<div class="formula">φ=θe=Log(q<sub>e</sub>)=(φx,φy,φz)</div>
+<p><code>φx</code> относится к крену вокруг Body X, <code>φy</code> — к тангажу вокруг Body Y, <code>φz</code> — к рысканию вокруг Body Z. Это компоненты одного одновременного поворота, не углы Эйлера.</p>
+
+<h2>5. Постоянная скорость</h2>
+<div class="result">[p,q,r]<sup>T</sup> = Log(q<sub>0</sub><sup>−1</sup>⊗q<sub>1</sub>)/T</div>
+<p>Траектория <code>q(t)=Slerp(q0,q1,t/T)</code> соответствует этому постоянному вектору угловой скорости.</p>
+
+<h2>6. Плавный старт и остановка</h2>
+<div class="formula">u=t/T<br>s(u)=10u³−15u⁴+6u⁵<br>q(t)=Slerp(q0,q1,s(u))</div>
+<div class="formula">ds/dt=(30u²−60u³+30u⁴)/T<br>ωb(t)=φ·ds/dt</div>
+<p>Ось остаётся постоянной, меняется только модуль. Максимум при <code>u=0.5</code>: <code>|ω|max=1.875·θ/T</code>.</p>
+
+<h2>7. Выбор времени</h2>
+<p>При отдельных пределах:</p>
+<div class="formula">T ≥ max(|φx|/pmax, |φy|/qmax, |φz|/rmax)</div>
+<p>Для S-кривой правая часть умножается на 1.875. При едином пределе модуля: <code>T≥θ/ωmax</code>, либо <code>T≥1.875·θ/ωmax</code> для S-кривой.</p>
+
+<h2>8. Реальный контур управления</h2>
+<p>Во время движения остаточная ошибка пересчитывается по фактическому кватерниону:</p>
+<div class="formula">q<sub>e</sub>(t)=q(t)<sup>−1</sup>⊗q<sub>ref</sub>(t)<br>ω<sub>cmd</sub>=ω<sub>ff</sub>+K<sub>R</sub>Log(q<sub>e</sub>)</div>
+
+<h2>9. Краткий алгоритм</h2>
+<pre>qe = inverse(q0) × q1
+if qe.w &lt; 0: qe = -qe
+v = length(qe.xyz)
+theta = 2 * atan2(v, qe.w)
+phi = theta * qe.xyz / v
+omega = phi / T</pre>
+</body>
+</html>

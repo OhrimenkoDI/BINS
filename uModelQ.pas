@@ -18,7 +18,8 @@ implementation
 
 procedure qInit;
 begin
-
+  // Правая связанная система Body FRD:
+  // oX = Forward (нос), oY = Right (правое крыло), oZ = Down (низ).
   with oX do begin
     ImagPart.x:=1;
     ImagPart.y:=0;
