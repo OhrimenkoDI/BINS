@@ -216,7 +216,9 @@ const
   RotationSpeed = 1.5; // radians per second at full stick deflection
 var
   JoyState: TJoystickState;
-  YawStep, PitchStep, RollStep: Single;
+  DX, DY, DZ: Single;
+  Angle: Single;
+  Axis: TPoint3D;
   DeltaQ: TQuaternion;
 begin
   if not FJoystick.Poll(-1000, 1000, JoyState) then
@@ -228,17 +230,21 @@ begin
   end;
 
   if not FJoystickConnected then
-    FJoystickStatus.Caption := 'Joystick: X=roll, Y=pitch, V=yaw';
+    FJoystickStatus.Caption := 'Joystick: X/Y/V -> quaternion axis-angle';
   FJoystickConnected := True;
 
-  RollStep := JoyState.X / 1000 * RotationSpeed * FJoystickTimer.Interval / 1000;
-  PitchStep := -JoyState.Y / 1000 * RotationSpeed * FJoystickTimer.Interval / 1000;
-  YawStep := JoyState.Z / 1000 * RotationSpeed * FJoystickTimer.Interval / 1000;
+  // Один вектор углового перемещения в локальной системе аппарата.
+  // Знаки осей сохранены из RotateW проекта 3DGraf.
+  DX :=  JoyState.X / 1000 * RotationSpeed * FJoystickTimer.Interval / 1000;
+  DY := -JoyState.Y / 1000 * RotationSpeed * FJoystickTimer.Interval / 1000;
+  DZ := -JoyState.Z / 1000 * RotationSpeed * FJoystickTimer.Interval / 1000;
 
-  if (RollStep = 0) and (PitchStep = 0) and (YawStep = 0) then
+  Angle := Sqrt(DX * DX + DY * DY + DZ * DZ);
+  if Angle = 0 then
     Exit;
 
-  DeltaQ := TQuaternion.Create(YawStep, PitchStep, RollStep);
+  Axis := TPoint3D.Create(DX / Angle, DY / Angle, DZ / Angle);
+  DeltaQ := TQuaternion.Create(Axis, Angle);
   q3 := (q3 * DeltaQ).Normalize;
   UpdateQuaternionAxes;
 
