@@ -5,7 +5,8 @@ interface
 uses
   Windows, Messages, SysUtils, Variants, Classes, Graphics, Controls, Forms,
   Dialogs, StdCtrls, ExtCtrls,uComPort,Math,uModel,uModelQ,
-  System.Math.Vectors, uQuaternion, Vcl.ComCtrls, uJoystick;
+  System.Math.Vectors, uQuaternion, Vcl.ComCtrls, uJoystick,
+  uPowerGraphQuaternion;
 
 type
   TMainForm = class(TForm)
@@ -56,6 +57,7 @@ type
     FJoystickTimer: TTimer;
     FJoystickStatus: TLabel;
     FJoystickConnected: Boolean;
+    FQuaternionReceiver: TPowerGraphQuaternionReceiver;
     procedure OnRead(Sender: TObject; ReadBytes: array of Byte);
     procedure JoystickTimer(Sender: TObject);
     procedure UpdateQuaternionAxes;
@@ -67,6 +69,7 @@ type
     ReadBytes: array of byte;
     { Public declarations }
     destructor Destroy; override;
+    procedure ApplyUDPQuaternion(const W, X, Y, Z: Single);
     procedure redraw;
   end;
 
@@ -187,29 +190,47 @@ begin
 
   // Image3: вид сверху, плоскость X-Y.
   // X (нос) направлена вверх, Y (правое крыло) направлена вправо.
-  fixyz3[0]:=90;
-  fixyz3[1]:=0;
+  fixyz3[0]:=0;
+  fixyz3[1]:=90;
   fixyz3[2]:=0;
-  muxyz3[0]:=200;
-  muxyz3[1]:=200;
+  muxyz3[0]:=180;
+  muxyz3[1]:=180;
   muxyz3[2]:=  0;
 
   // Image4: аксонометрия Body FRD.
   // X: вправо-вверх 60 градусов; Y: вправо-вниз 30 градусов; Z: вниз.
   fixyz4[0]:=30;
-  fixyz4[1]:=-30;
-  fixyz4[2]:=-90;
+  fixyz4[1]:=150;
+  fixyz4[2]:=90;
   muxyz4[0]:=180;
   muxyz4[1]:=180;
   muxyz4[2]:=180;
 
   redraw;
+  FQuaternionReceiver := TPowerGraphQuaternionReceiver.Create(31078,
+    ApplyUDPQuaternion);
  end;
 
 destructor TMainForm.Destroy;
 begin
+  FreeAndNil(FQuaternionReceiver);
   FreeAndNil(FJoystick);
   inherited;
+end;
+
+procedure TMainForm.ApplyUDPQuaternion(const W, X, Y, Z: Single);
+begin
+  q3.W := W;
+  q3.X := X;
+  q3.Y := Y;
+  q3.Z := Z;
+  q3 := q3.Normalize;
+  UpdateQuaternionAxes;
+
+  redrawI(Image1, muxyz1, fixyz1);
+  redrawI(Image2, muxyz2, fixyz2);
+  redrawI(Image3, muxyz3, fixyz3);
+  redrawI(Image4, muxyz4, fixyz4);
 end;
 
 procedure TMainForm.UpdateQuaternionAxes;

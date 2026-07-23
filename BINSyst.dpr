@@ -3,7 +3,8 @@ program BINSyst;
 uses
   Vcl.Forms,
   uMainForm in 'uMainForm.pas' {MainForm},
-  uJoystick in 'uJoystick.pas';
+  uJoystick in 'uJoystick.pas',
+  uPowerGraphQuaternion in 'uPowerGraphQuaternion.pas';
 
 {$R *.res}
 
