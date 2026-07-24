@@ -6,10 +6,22 @@ uses uQuaternion;
 
 var
   oX,oY,oZ : TQuaternion;  // оси
-  oX1,oY1,oZ1 : TQuaternion;  // оси
-  oX2,oY2,oZ2 : TQuaternion;  // оси
-  oX3,oY3,oZ3 : TQuaternion;  // оси
-  q1,q2,q3 : TQuaternion;
+  oX3,oY3,oZ3 : TQuaternion;  // текущие оси платформы
+
+  magVecLoc : TQuaternion;  // магнитный вектор локальный
+  magVecWord : TQuaternion;  // магнитный вектор мировой
+
+  GravVecLoc : TQuaternion;  // магнитный вектор локальный
+  GravVecWord : TQuaternion;  // магнитный вектор мировой
+
+  FQStart: TQuaternion;    // стартовый кватернион
+  FQFin: TQuaternion;      // финальный кватернион
+  FQTarget: TQuaternion;   // целевой кватернион   зависит от параметра например высоты
+
+
+
+
+  QBodyDjo,QBNO055,QModel : TQuaternion;            // текущая ориентация
 
 procedure qInit;
 

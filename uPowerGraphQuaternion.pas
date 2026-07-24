@@ -3,49 +3,54 @@ unit uPowerGraphQuaternion;
 interface
 
 uses
-  System.Classes, Winapi.WinSock;
-
-type
-  TQuaternionReceivedEvent = procedure(const W, X, Y, Z: Single) of object;
-
-  TPowerGraphQuaternionReceiver = class(TThread)
-  private
-    FSocket: TSocket;
-    FPort: Word;
-    FOnQuaternion: TQuaternionReceivedEvent;
-    procedure DeliverQuaternion(const W, X, Y, Z: Single);
-  protected
-    procedure Execute; override;
-  public
-    constructor Create(const APort: Word;
-      const AOnQuaternion: TQuaternionReceivedEvent);
-    destructor Destroy; override;
-  end;
-
-implementation
-
-uses
   System.SysUtils;
 
 const
-  INVALID_UDP_SOCKET = TSocket(INVALID_SOCKET);
+  POWERGRAPH_FIRST_BNO_CHANNEL = 9;
+  POWERGRAPH_LAST_BNO_CHANNEL = 32;
 
-function ReadUInt32LE(const Buffer: array of Byte; const Offset: Integer): Cardinal;
+type
+  TPowerGraphRawChannels =
+    array[POWERGRAPH_FIRST_BNO_CHANNEL..POWERGRAPH_LAST_BNO_CHANNEL] of SmallInt;
+  TPowerGraphScaledChannels =
+    array[POWERGRAPH_FIRST_BNO_CHANNEL..POWERGRAPH_LAST_BNO_CHANNEL] of Single;
+
+  TPowerGraphBnoData = record
+    Raw: TPowerGraphRawChannels;
+    Value: TPowerGraphScaledChannels;
+  end;
+
+function TryDecodePowerGraphBnoData(const Packet: TBytes;
+  out Data: TPowerGraphBnoData): Boolean;
+
+implementation
+
+function ReadUInt32LE(const Buffer: TBytes; const Offset: Integer): Cardinal;
 begin
   Move(Buffer[Offset], Result, SizeOf(Result));
 end;
 
-function ReadInt16LE(const Buffer: array of Byte; const Offset: Integer): SmallInt;
+function ReadInt16LE(const Buffer: TBytes; const Offset: Integer): SmallInt;
 begin
   Move(Buffer[Offset], Result, SizeOf(Result));
 end;
 
-function Crc32(const Buffer: array of Byte; const Count: Integer): Cardinal;
+function CountSetBits(Value: Cardinal): Integer;
+begin
+  Result := 0;
+  while Value <> 0 do
+  begin
+    Inc(Result, Value and 1);
+    Value := Value shr 1;
+  end;
+end;
+
+function Crc32(const Buffer: TBytes; const Offset, Count: Integer): Cardinal;
 var
   I, BitIndex: Integer;
 begin
   Result := $FFFFFFFF;
-  for I := 0 to Count - 1 do
+  for I := Offset to Offset + Count - 1 do
   begin
     Result := Result xor Buffer[I];
     for BitIndex := 0 to 7 do
@@ -57,123 +62,81 @@ begin
   Result := not Result;
 end;
 
-function DigitalToQuaternion(const Value: SmallInt): Single;
+function DigitalToPhysical(const DigitalValue: SmallInt;
+  const PhysicalMin, PhysicalMax: Single): Single;
 begin
-  // Inverse of SetCHANNELS for the physical range -1.0 .. +1.0.
-  Result := -1.0 + (Integer(Value) + 32768) * (2.0 / 65535.0);
-  if Value = 0 then
-    Result := 0.0;
+  if DigitalValue = 0 then
+    Exit(0.0);
+
+  Result := PhysicalMin +
+    (Integer(DigitalValue) + 32768) *
+    ((PhysicalMax - PhysicalMin) / 65535.0);
 end;
 
-constructor TPowerGraphQuaternionReceiver.Create(const APort: Word;
-  const AOnQuaternion: TQuaternionReceivedEvent);
+function ScaleChannel(const Channel: Integer;
+  const DigitalValue: SmallInt): Single;
 begin
-  // Create(False) starts the thread from TThread.AfterConstruction, after all
-  // receiver fields below have been initialized. Calling Start here would make
-  // AfterConstruction attempt a second start.
-  inherited Create(False);
-  FreeOnTerminate := False;
-  FSocket := INVALID_UDP_SOCKET;
-  FPort := APort;
-  FOnQuaternion := AOnQuaternion;
-end;
-
-destructor TPowerGraphQuaternionReceiver.Destroy;
-begin
-  Terminate;
-  if FSocket <> INVALID_UDP_SOCKET then
-  begin
-    closesocket(FSocket);
-    FSocket := INVALID_UDP_SOCKET;
+  case Channel of
+    9..16:
+      Result := DigitalValue;
+    17..19:
+      Result := DigitalToPhysical(DigitalValue, -2500.0, 2500.0);
+    20..22:
+      Result := DigitalToPhysical(DigitalValue, -20.0, 20.0);
+    23..25:
+      Result := DigitalToPhysical(DigitalValue, -1000.0, 1000.0);
+    26:
+      Result := DigitalToPhysical(DigitalValue, -360.0, 360.0);
+    27..28:
+      Result := DigitalToPhysical(DigitalValue, -180.0, 180.0);
+    29..32:
+      Result := DigitalToPhysical(DigitalValue, -1.0, 1.0);
+  else
+    Result := DigitalValue;
   end;
-  WaitFor;
-  inherited;
 end;
 
-procedure TPowerGraphQuaternionReceiver.DeliverQuaternion(
-  const W, X, Y, Z: Single);
-begin
-  if Assigned(FOnQuaternion) then
-    FOnQuaternion(W, X, Y, Z);
-end;
-
-procedure TPowerGraphQuaternionReceiver.Execute;
+function TryDecodePowerGraphBnoData(const Packet: TBytes;
+  out Data: TPowerGraphBnoData): Boolean;
 var
-  Addr, SourceAddr: TSockAddrIn;
-  SourceLen, ReadCount: Integer;
-  Buffer: array[0..65534] of Byte;
   Mask, PacketCrc, ReceivedCrc: Cardinal;
   Channel, Offset, PacketLength: Integer;
-  Values: array[29..32] of SmallInt;
-  W, X, Y, Z: Single;
 begin
-  FSocket := socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-  if FSocket = INVALID_UDP_SOCKET then
+  Result := False;
+  FillChar(Data, SizeOf(Data), 0);
+
+  if Length(Packet) < 12 then
+    Exit;
+  if (Packet[0] <> Ord('A')) or (Packet[1] <> Ord('D')) or
+     (Packet[2] <> Ord('C')) or (Packet[3] <> Ord('O')) then
     Exit;
 
-  FillChar(Addr, SizeOf(Addr), 0);
-  Addr.sin_family := AF_INET;
-  Addr.sin_addr.S_addr := INADDR_ANY;
-  Addr.sin_port := htons(FPort);
-  if bind(FSocket, Addr, SizeOf(Addr)) = SOCKET_ERROR then
+  Mask := ReadUInt32LE(Packet, 4);
+  if (Mask and $FFFFFF00) <> $FFFFFF00 then
     Exit;
 
-  while not Terminated do
-  begin
-    SourceLen := SizeOf(SourceAddr);
-    ReadCount := recvfrom(FSocket, Buffer[0], SizeOf(Buffer), 0,
-      SourceAddr, SourceLen);
-    if Terminated then
-      Break;
-    if ReadCount < 12 then
-      Continue;
-    if (Buffer[0] <> Ord('A')) or (Buffer[1] <> Ord('D')) or
-       (Buffer[2] <> Ord('C')) or (Buffer[3] <> Ord('O')) then
-      Continue;
+  PacketLength := 4 + 4 + CountSetBits(Mask) * 2 + 4;
+  if PacketLength <> Length(Packet) then
+    Exit;
 
-    Mask := ReadUInt32LE(Buffer, 4);
-    if (Mask and $F0000000) <> $F0000000 then
-      Continue;
+  PacketCrc := Crc32(Packet, 0, PacketLength - 4);
+  ReceivedCrc := ReadUInt32LE(Packet, PacketLength - 4);
+  if PacketCrc <> ReceivedCrc then
+    Exit;
 
-    Offset := 8;
-    FillChar(Values, SizeOf(Values), 0);
-    for Channel := 1 to 32 do
-      if (Mask and (Cardinal(1) shl (Channel - 1))) <> 0 then
+  Offset := 8;
+  for Channel := 1 to 32 do
+    if (Mask and (Cardinal(1) shl (Channel - 1))) <> 0 then
+    begin
+      if Channel >= POWERGRAPH_FIRST_BNO_CHANNEL then
       begin
-        if Offset + 2 > ReadCount then
-          Break;
-        if Channel >= 29 then
-          Values[Channel] := ReadInt16LE(Buffer, Offset);
-        Inc(Offset, 2);
+        Data.Raw[Channel] := ReadInt16LE(Packet, Offset);
+        Data.Value[Channel] := ScaleChannel(Channel, Data.Raw[Channel]);
       end;
+      Inc(Offset, 2);
+    end;
 
-    PacketLength := Offset + SizeOf(Cardinal);
-    if PacketLength <> ReadCount then
-      Continue;
-    PacketCrc := Crc32(Buffer, Offset);
-    ReceivedCrc := ReadUInt32LE(Buffer, Offset);
-    if PacketCrc <> ReceivedCrc then
-      Continue;
-
-    W := DigitalToQuaternion(Values[29]);
-    X := DigitalToQuaternion(Values[30]);
-    Y := DigitalToQuaternion(Values[31]);
-    Z := DigitalToQuaternion(Values[32]);
-    Synchronize(
-      procedure
-      begin
-        DeliverQuaternion(W, X, Y, Z);
-      end);
-  end;
+  Result := True;
 end;
-
-var
-  WSAData: TWSAData;
-
-initialization
-  WSAStartup($0202, WSAData);
-
-finalization
-  WSACleanup;
 
 end.

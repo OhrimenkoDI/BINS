@@ -4,7 +4,8 @@ uses
   Vcl.Forms,
   uMainForm in 'uMainForm.pas' {MainForm},
   uJoystick in 'uJoystick.pas',
-  uPowerGraphQuaternion in 'uPowerGraphQuaternion.pas';
+  uPowerGraphQuaternion in 'uPowerGraphQuaternion.pas',
+  uPowerGraphUdpSplitter in 'uPowerGraphUdpSplitter.pas';
 
 {$R *.res}
 

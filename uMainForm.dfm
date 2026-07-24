@@ -2,7 +2,7 @@ object MainForm: TMainForm
   Left = 2
   Top = 94
   Caption = 'MainForm'
-  ClientHeight = 986
+  ClientHeight = 979
   ClientWidth = 1542
   Color = clBtnFace
   Font.Charset = DEFAULT_CHARSET
@@ -26,7 +26,7 @@ object MainForm: TMainForm
   end
   object Image3: TImage
     Left = 8
-    Top = 446
+    Top = 445
     Width = 400
     Height = 400
   end
@@ -36,168 +36,54 @@ object MainForm: TMainForm
     Width = 400
     Height = 400
   end
-  object WAccFiltr0: TLabel
-    Left = 928
-    Top = 680
-    Width = 110
-    Height = 22
-    Caption = 'WAccFiltr0'
-    Visible = False
-  end
-  object WAccFiltr1: TLabel
-    Left = 928
-    Top = 704
-    Width = 110
-    Height = 22
-    Caption = 'WAccFiltr1'
-    Visible = False
-  end
-  object WAccFiltr2: TLabel
-    Left = 928
-    Top = 728
-    Width = 110
-    Height = 22
-    Caption = 'WAccFiltr2'
-    Visible = False
-  end
-  object GyroZeroFiltr0: TLabel
-    Left = 1000
-    Top = 130
-    Width = 154
-    Height = 22
-    Caption = 'GyroZeroFiltr0'
-  end
-  object GyroZeroFiltr1: TLabel
-    Left = 1000
-    Top = 155
-    Width = 154
-    Height = 22
-    Caption = 'GyroZeroFiltr1'
-  end
-  object GyroZeroFiltr2: TLabel
-    Left = 1000
-    Top = 180
-    Width = 154
-    Height = 22
-    Caption = 'GyroZeroFiltr2'
-  end
-  object pind1: TLabel
-    Left = 928
-    Top = 800
-    Width = 55
-    Height = 22
-    Caption = 'pind1'
-    Visible = False
-  end
-  object pind2: TLabel
-    Left = 928
-    Top = 824
-    Width = 55
-    Height = 22
-    Caption = 'pind2'
-    Visible = False
-  end
-  object pind0: TLabel
-    Left = 928
-    Top = 776
-    Width = 55
-    Height = 22
-    Caption = 'pind0'
-    Visible = False
-  end
-  object OXl2: TLabel
-    Left = 1128
-    Top = 488
-    Width = 44
-    Height = 22
-    Caption = 'OXl2'
-  end
-  object OYl2: TLabel
-    Left = 1128
-    Top = 512
-    Width = 44
-    Height = 22
-    Caption = 'OYl2'
-    Visible = False
-  end
-  object OZl0: TLabel
-    Left = 1128
-    Top = 536
-    Width = 44
-    Height = 22
-    Caption = 'OZl0'
-    Visible = False
-  end
-  object OZl1: TLabel
-    Left = 1128
-    Top = 560
-    Width = 44
-    Height = 22
-    Caption = 'OZl1'
-    Visible = False
-  end
-  object AccFiltr0: TLabel
-    Left = 1000
-    Top = 40
-    Width = 99
-    Height = 22
-    Caption = 'AccFiltr0'
-  end
-  object AccFiltr1: TLabel
-    Left = 1000
-    Top = 65
-    Width = 99
-    Height = 22
-    Caption = 'AccFiltr1'
-  end
-  object AccFiltr2: TLabel
-    Left = 1000
-    Top = 90
-    Width = 99
-    Height = 22
-    Caption = 'AccFiltr2'
-  end
-  object iACC0: TLabel
+  object QuatW: TLabel
     Left = 832
-    Top = 40
+    Top = 39
     Width = 55
     Height = 22
-    Caption = 'iGir0'
+    Caption = 'QuatW'
   end
-  object iACC1: TLabel
+  object QuatX: TLabel
     Left = 832
-    Top = 65
+    Top = 62
     Width = 55
     Height = 22
-    Caption = 'iACC1'
+    Caption = 'QuatX'
   end
-  object iACC2: TLabel
+  object QuatY: TLabel
     Left = 832
     Top = 90
     Width = 55
     Height = 22
-    Caption = 'iACC2'
+    Caption = 'QuatY'
   end
-  object iGir0: TLabel
+  object QuatZ: TLabel
     Left = 832
-    Top = 130
+    Top = 118
     Width = 55
     Height = 22
-    Caption = 'iGir0'
+    Caption = 'QuatZ'
   end
-  object iGir1: TLabel
-    Left = 832
-    Top = 155
+  object Pitch: TLabel
+    Left = 976
+    Top = 39
     Width = 55
     Height = 22
-    Caption = 'iGir1'
+    Caption = 'Pitch'
   end
-  object iGir2: TLabel
-    Left = 832
-    Top = 180
-    Width = 55
+  object Yaw: TLabel
+    Left = 976
+    Top = 90
+    Width = 33
     Height = 22
-    Caption = 'iGir2'
+    Caption = 'Yaw'
+  end
+  object Roll: TLabel
+    Left = 976
+    Top = 62
+    Width = 44
+    Height = 22
+    Caption = 'Roll'
   end
   object Panel1: TPanel
     Left = 0
@@ -206,61 +92,62 @@ object MainForm: TMainForm
     Height = 33
     Align = alTop
     TabOrder = 0
-    object BtOpenPort: TButton
-      Left = 146
+    object Button1: TButton
+      Left = 1088
       Top = 5
-      Width = 80
+      Width = 145
       Height = 25
-      Caption = 'Open'
+      Caption = 'Copy Memo1'
       TabOrder = 0
-      OnClick = BtOpenPortClick
-    end
-    object BtClosePort: TButton
-      Left = 232
-      Top = 5
-      Width = 80
-      Height = 25
-      Caption = 'Close'
-      TabOrder = 1
-      OnClick = BtClosePortClick
-    end
-    object ComboCOM: TComboBox
-      Left = 8
-      Top = 7
-      Width = 121
-      Height = 30
-      TabOrder = 2
-      Text = 'ComboCOM'
+      OnClick = Button1Click
     end
   end
   object Memo1: TMemo
-    Left = 833
-    Top = 232
-    Width = 409
-    Height = 137
-    Lines.Strings = (
-      'Memo1')
+    Left = 832
+    Top = 160
+    Width = 800
+    Height = 740
+    ReadOnly = True
+    ScrollBars = ssVertical
     TabOrder = 1
   end
-  object Memo2: TMemo
-    Left = 1188
-    Top = 457
-    Width = 409
-    Height = 389
-    Lines.Strings = (
-      'Memo1')
+  object ScrollBar1: TScrollBar
+    Left = 24
+    Top = 936
+    Width = 881
+    Height = 17
+    Max = 10
+    PageSize = 0
     TabOrder = 2
+    OnChange = ScrollBar1Change
   end
-  object TrackBar1: TTrackBar
-    Left = 833
-    Top = 391
-    Width = 405
-    Height = 45
-    LineSize = 10
-    Max = 100
-    PageSize = 10
-    Frequency = 5
+  object EdAz: TEdit
+    Left = 24
+    Top = 880
+    Width = 121
+    Height = 30
     TabOrder = 3
-    OnChange = TrackBar1Change
+    Text = '0'
+  end
+  object edEl: TEdit
+    Left = 168
+    Top = 880
+    Width = 121
+    Height = 30
+    TabOrder = 4
+    Text = '0'
+  end
+  object BtSol: TButton
+    Left = 333
+    Top = 883
+    Width = 75
+    Height = 25
+    Caption = 'BtSol'
+    TabOrder = 5
+    OnClick = BtSolClick
+  end
+  object ColorDialog1: TColorDialog
+    Left = 1040
+    Top = 128
   end
 end

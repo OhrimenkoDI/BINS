@@ -4,72 +4,60 @@ interface
 
 uses
   Windows, Messages, SysUtils, Variants, Classes, Graphics, Controls, Forms,
-  Dialogs, StdCtrls, ExtCtrls,uComPort,Math,uModel,uModelQ,
-  System.Math.Vectors, uQuaternion, Vcl.ComCtrls, uJoystick,
-  uPowerGraphQuaternion;
+  Dialogs, StdCtrls, ExtCtrls, Math, uModel, uModelQ,
+  System.Math.Vectors, uQuaternion, Vcl.Clipbrd, uJoystick,
+  uPowerGraphQuaternion, uPowerGraphUdpSplitter;
 
 type
   TMainForm = class(TForm)
     Panel1: TPanel;
-    BtOpenPort: TButton;
-    BtClosePort: TButton;
-    ComboCOM: TComboBox;
     Image1: TImage;
     Image2: TImage;
     Image3: TImage;
     Image4: TImage;
+    QuatW: TLabel;
+    QuatX: TLabel;
+    QuatY: TLabel;
+    QuatZ: TLabel;
     Memo1: TMemo;
-    WAccFiltr0: TLabel;
-    WAccFiltr1: TLabel;
-    WAccFiltr2: TLabel;
-    GyroZeroFiltr0: TLabel;
-    GyroZeroFiltr1: TLabel;
-    GyroZeroFiltr2: TLabel;
-    pind1: TLabel;
-    pind2: TLabel;
-    pind0: TLabel;
-    OXl2: TLabel;
-    OYl2: TLabel;
-    OZl0: TLabel;
-    OZl1: TLabel;
-    AccFiltr0: TLabel;
-    AccFiltr1: TLabel;
-    AccFiltr2: TLabel;
-    iACC0: TLabel;
-    iACC1: TLabel;
-    iACC2: TLabel;
-    Memo2: TMemo;
-    TrackBar1: TTrackBar;
-    iGir0: TLabel;
-    iGir1: TLabel;
-    iGir2: TLabel;
+    Button1: TButton;
+    ScrollBar1: TScrollBar;
+    EdAz: TEdit;
+    edEl: TEdit;
+    BtSol: TButton;
+    Pitch: TLabel;
+    Yaw: TLabel;
+    Roll: TLabel;
+    ColorDialog1: TColorDialog;
     procedure FormCreate(Sender: TObject);
-    procedure BtClosePortClick(Sender: TObject);
-    procedure BtOpenPortClick(Sender: TObject);
     procedure Button1Click(Sender: TObject);
-    procedure Button2Click(Sender: TObject);
-    procedure TrackBar1Change(Sender: TObject);
+    procedure BtSolClick(Sender: TObject);
+    procedure ScrollBar1Change(Sender: TObject);
   private
     { Private declarations }
-    ng:integer;
-    Port: TComPort;
     FJoystick: TJoystickController;
     FJoystickTimer: TTimer;
     FJoystickStatus: TLabel;
     FJoystickConnected: Boolean;
-    FQuaternionReceiver: TPowerGraphQuaternionReceiver;
-    procedure OnRead(Sender: TObject; ReadBytes: array of Byte);
+    FPowerGraphSplitter: TPowerGraphUdpSplitter;
+
+    FHasSolution: Boolean;
     procedure JoystickTimer(Sender: TObject);
-    procedure UpdateQuaternionAxes;
+    procedure ApplyPowerGraphPacket(const Packet: TBytes);
+    procedure UpdateTargetAndErrors;
+    function QuaternionFromFinalZ(const AzimuthDeg, ElevationDeg: Double;
+      out Q: TQuaternion): Boolean;
+    function TryReadAngle(Edit: TEdit; out Value: Double): Boolean;
     function  d2x(Image:TImage;muxyz:tvec3;fixyz:tvec3;x,y,z:double):integer;
     function  d2y(Image:TImage;muxyz:tvec3;fixyz:tvec3;x,y,z:double):integer;
     procedure Line3D(Image:TImage;muxyz:tvec3;fixyz:tvec3;x1,y1,z1,x2,y2,z2:double;Color:TColor;Width:integer;st:string='');
     procedure redrawI(Image:TImage;muxyz:tvec3;fixyz:tvec3);
-  public
-    ReadBytes: array of byte;
+    procedure RedrawQ(Image:TImage;muxyz:tvec3;fixyz:tvec3;Quater:TQuaternion;stx,sty,stz:string);
+   public
     { Public declarations }
     destructor Destroy; override;
-    procedure ApplyUDPQuaternion(const W, X, Y, Z: Single);
+    procedure ApplyUDPQuaternion(const W, X, Y, Z: Single;
+      const Channels: TPowerGraphBnoData);
     procedure redraw;
   end;
 
@@ -78,76 +66,17 @@ var
 
 implementation
 
-uses uGrafForm;
-
 {$R *.dfm}
 
-// Преобразование float32 Microchip -> float32 IEEE-754
-//
-function MCHPtoIEEE(a:dword):Single;
-var
- x:array[0..3] of byte;
- s:Single;
-begin
-  Move(a,x,4);
-    if (x[3] AND $01 )=$01 then begin        // Младший бит exp(Microchip) равен 1?
-      x[3]:=x[3] shr 1;
-      if (x[2]and $80)=$80 then
-        x[3]:=x[3] or $80
-      else
-        x[2]:=x[2] or $80;
-    end else begin
-      x[3]:=x[3] shr 1;
-      if (x[2]and $80)=$80 then begin
-        x[3]:=x[3] or $80;
-        x[2]:=x[2] AND not$80;
-      end;
-    end;
-  move(x,s,4);
-  result:=0;
-  if IsNan(s) then begin
-   // MainForm.Memo1.Lines.Add(FloatToStr(s));
-   // MainForm.Memo1.Lines.Add(IntToHex(a,8))
-  end
-  else
-    result:=s;
-end;
-
-
-function hextoint(st:string):dword;
-var i:dword;
-ch:byte;
-begin
-st:=UpperCase(st);
-i:=0;
-while length(st)>0 do begin
-ch:=byte(st[1]);
-if ch>$39 then ch:=ch-7;
-ch:=ch-$30;
-if ch>$F then begin
-                hextoint:=dword(-1);
-                exit;
-              end;
-i:=(i shl 4)+ch;
-delete(st,1,1);
-end;
-hextoint:=i;
-end;
-
-Function HexToSmInt(st:string):Smallint;
-begin
-  Result:=Smallint(hextoint(st));
-end;
-///////////////////////////////
-
 procedure TMainForm.FormCreate(Sender: TObject);
-var
-  i:integer;
 begin
   qInit;
 
-  q3 := TQuaternion.Identity;
-  UpdateQuaternionAxes;
+  QBodyDjo := TQuaternion.Identity;
+  FQStart := TQuaternion.Identity;
+  FQFin := TQuaternion.Identity;
+  FQTarget := TQuaternion.Identity;
+  FHasSolution := False;
 
   FJoystickStatus := TLabel.Create(Self);
   FJoystickStatus.Parent := Panel1;
@@ -162,22 +91,19 @@ begin
   FJoystickTimer.OnTimer := JoystickTimer;
   FJoystickTimer.Enabled := True;
   self.DoubleBuffered:=true;
-  Memo1.Clear;
-   Memo2.Clear;
-  ng:=0;
-
-  for i:=0 to 10 do
-    ComboCOM.Items.Add('COM'+inttostr(i));
-  ComboCOM.ItemIndex:=7;
-
+  QuatW.Caption := 'qW: waiting';
+  QuatX.Caption := 'qX: waiting';
+  QuatY.Caption := 'qY: waiting';
+  QuatZ.Caption := 'qZ: waiting';
+  Memo1.Lines.Text := 'Quaternion: waiting';
   // Image1: вид справа, плоскость X-Z (Body FRD).
   // X направлена вправо (вперёд), Z направлена вниз.
-  fixyz1[0]:=0;
-  fixyz1[1]:=0;
+  fixyz1[0]:=30;
+  fixyz1[1]:=150;
   fixyz1[2]:=-90;
-  muxyz1[0]:=200;
-  muxyz1[1]:=  0;
-  muxyz1[2]:=200;
+  muxyz1[0]:=180;
+  muxyz1[1]:=180;
+  muxyz1[2]:=180;
 
   // Image2: вид спереди, плоскость Y-Z.
   // Y направлена вправо, Z направлена вниз.
@@ -185,8 +111,8 @@ begin
   fixyz2[1]:=0;
   fixyz2[2]:=-90;
   muxyz2[0]:=0;
-  muxyz2[1]:=200;
-  muxyz2[2]:=200;
+  muxyz2[1]:=180;
+  muxyz2[2]:=180;
 
   // Image3: вид сверху, плоскость X-Y.
   // X (нос) направлена вверх, Y (правое крыло) направлена вправо.
@@ -198,49 +124,370 @@ begin
   muxyz3[2]:=  0;
 
   // Image4: аксонометрия Body FRD.
-  // X: вправо-вверх 60 градусов; Y: вправо-вниз 30 градусов; Z: вниз.
-  fixyz4[0]:=30;
-  fixyz4[1]:=150;
+  // X: вправо-вверх 30 градусов; Y: влево-вниз 30 градусов; Z: вниз.
+  fixyz4[0]:=30+180;
+  fixyz4[1]:=150-180;
   fixyz4[2]:=90;
   muxyz4[0]:=180;
   muxyz4[1]:=180;
   muxyz4[2]:=180;
 
   redraw;
-  FQuaternionReceiver := TPowerGraphQuaternionReceiver.Create(31078,
-    ApplyUDPQuaternion);
+  FPowerGraphSplitter := TPowerGraphUdpSplitter.Create(31080, 31078,
+    ApplyPowerGraphPacket);
  end;
 
 destructor TMainForm.Destroy;
 begin
-  FreeAndNil(FQuaternionReceiver);
+  FreeAndNil(FPowerGraphSplitter);
   FreeAndNil(FJoystick);
   inherited;
 end;
 
-procedure TMainForm.ApplyUDPQuaternion(const W, X, Y, Z: Single);
+procedure TMainForm.ApplyPowerGraphPacket(const Packet: TBytes);
+var
+  Channels: TPowerGraphBnoData;
 begin
-  q3.W := W;
-  q3.X := X;
-  q3.Y := Y;
-  q3.Z := Z;
-  q3 := q3.Normalize;
-  UpdateQuaternionAxes;
+  if TryDecodePowerGraphBnoData(Packet, Channels) then
+    ApplyUDPQuaternion(
+      Channels.Value[29], Channels.Value[30],
+      Channels.Value[31], Channels.Value[32], Channels);
+end;
+
+procedure TMainForm.Button1Click(Sender: TObject);
+begin
+  Clipboard.AsText := Memo1.Text;
+end;
+
+function TMainForm.TryReadAngle(Edit: TEdit; out Value: Double): Boolean;
+var
+  S: string;
+begin
+  S := Trim(Edit.Text);
+  Result := TryStrToFloat(S, Value);
+  if not Result then
+  begin
+    if FormatSettings.DecimalSeparator = ',' then
+      S := StringReplace(S, '.', ',', [rfReplaceAll])
+    else
+      S := StringReplace(S, ',', '.', [rfReplaceAll]);
+    Result := TryStrToFloat(S, Value);
+  end;
+end;
+
+// расчет финального кватерниона
+function TMainForm.QuaternionFromFinalZ(const AzimuthDeg,
+  ElevationDeg: Double; out Q: TQuaternion): Boolean;
+var
+  Az, El, CEl: Double;
+  XX, XY, XZ, YX, YY, YZ, ZX, ZY, ZZ: Double;
+  L, Trace, S: Double;
+begin
+  // Navigation frame used by the received quaternion has Z pointing Up.
+  // EdAz/edEl describe the forward/sight direction, which at the end is
+  // Body -Z. Azimuth 0 is +X, positive azimuth turns toward +Y.
+  Az := DegToRad(AzimuthDeg);
+  El := DegToRad(ElevationDeg);
+  CEl := Cos(El);
+  ZY := -CEl * Cos(Az);
+  ZX := -CEl * Sin(Az);
+  ZZ := -Sin(El);
+
+  // Zero-roll completion of the frame: Body X is the projection of Down (-Z)
+  // onto the plane normal to Body Z. At elevation 0 Body X points Down.
+  XX := ZZ * ZX;
+  XY := ZZ * ZY;
+  XZ := -1.0 + ZZ * ZZ;
+  L := Sqrt(XX * XX + XY * XY + XZ * XZ);
+  Result := L > 1.0E-8;
+  if not Result then
+    Exit;
+  XX := XX / L;
+  XY := XY / L;
+  XZ := XZ / L;
+
+  // Right-handed Body FRD frame: Y = Z x X, so X x Y = Z.
+  YX := ZY * XZ - ZZ * XY;
+  YY := ZZ * XX - ZX * XZ;
+  YZ := ZX * XY - ZY * XX;
+
+  // Rotation matrix columns are the Body X/Y/Z axes in navigation coordinates.
+  Trace := XX + YY + ZZ;
+  if Trace > 0 then
+  begin
+    S := 2.0 * Sqrt(Trace + 1.0);
+    Q.W := 0.25 * S;
+    Q.X := (YZ - ZY) / S;
+    Q.Y := (ZX - XZ) / S;
+    Q.Z := (XY - YX) / S;
+  end
+  else if (XX > YY) and (XX > ZZ) then
+  begin
+    S := 2.0 * Sqrt(1.0 + XX - YY - ZZ);
+    Q.W := (YZ - ZY) / S;
+    Q.X := 0.25 * S;
+    Q.Y := (YX + XY) / S;
+    Q.Z := (ZX + XZ) / S;
+  end
+  else if YY > ZZ then
+  begin
+    S := 2.0 * Sqrt(1.0 + YY - XX - ZZ);
+    Q.W := (ZX - XZ) / S;
+    Q.X := (YX + XY) / S;
+    Q.Y := 0.25 * S;
+    Q.Z := (ZY + YZ) / S;
+  end
+  else
+  begin
+    S := 2.0 * Sqrt(1.0 + ZZ - XX - YY);
+    Q.W := (XY - YX) / S;
+    Q.X := (ZX + XZ) / S;
+    Q.Y := (ZY + YZ) / S;
+    Q.Z := 0.25 * S;
+  end;
+  Q := Q.Normalize;
+end;
+
+procedure TMainForm.BtSolClick(Sender: TObject);
+var
+  Azimuth, Elevation: Double;
+begin
+  if not TryReadAngle(EdAz, Azimuth) then
+  begin
+    MessageDlg('Неверно задан азимут EdAz.', mtError, [mbOK], 0);
+    Exit;
+  end;
+  if not TryReadAngle(edEl, Elevation) then
+  begin
+    MessageDlg('Неверно задан угол к горизонту edEl.', mtError, [mbOK], 0);
+    Exit;
+  end;
+
+  // расчет финального кватерниона
+  if not QuaternionFromFinalZ(Azimuth, Elevation, FQFin) then
+  begin
+    MessageDlg('Для вертикальной оси Z ориентация по азимуту не определена.',
+      mtError, [mbOK], 0);
+    Exit;
+  end;
+
+  FQStart := QBNO055.Normalize;
+  FHasSolution := True;
+end;
+
+procedure TMainForm.ScrollBar1Change(Sender: TObject);
+begin
+end;
+
+// расчет ошибки кватерниона и перевод в углы Эйлера для рулежки
+procedure TMainForm.UpdateTargetAndErrors;
+var
+  T, VLen, Angle, K: Double;
+  QError: TQuaternion;
+begin
+  // если нет расчета, то выход
+  if not FHasSolution then
+    Exit;
+
+  T := EnsureRange(ScrollBar1.Position / 10.0, 0.0, 1.0);
+  FQTarget := FQStart.Slerp(FQStart, FQFin, T).Normalize;
+
+  // q3 and QTarget are q_nb. This product expresses the correction
+  // from current attitude to target attitude in the current Body frame.
+  QError := (QBNO055.Inverse * FQTarget).Normalize;
+  if QError.W < 0 then
+    QError := -QError;
+
+  VLen := Sqrt(Sqr(QError.X) + Sqr(QError.Y) + Sqr(QError.Z));
+  if VLen > 1.0E-8 then
+  begin
+    Angle := 2.0 * ArcTan2(VLen, QError.W);
+    K := Angle / VLen;
+  end
+  else
+    K := 2.0;
+
+  Memo1.Lines.Add('');
+  Memo1.Lines.Add('t                  ' + FormatFloat('0.000', T));
+  Memo1.Lines.Add('QStart             ' + Format(
+    'W=%0.6f X=%0.6f Y=%0.6f Z=%0.6f',
+    [FQStart.W, FQStart.X, FQStart.Y, FQStart.Z]));
+  Memo1.Lines.Add('QFin               ' + Format(
+    'W=%0.6f X=%0.6f Y=%0.6f Z=%0.6f',
+    [FQFin.W, FQFin.X, FQFin.Y, FQFin.Z]));
+  Memo1.Lines.Add('QTarget            ' + Format(
+    'W=%0.6f X=%0.6f Y=%0.6f Z=%0.6f',
+    [FQTarget.W, FQTarget.X, FQTarget.Y, FQTarget.Z]));
+  Memo1.Lines.Add('Pitch error        ' +
+    FormatFloat('0.000', RadToDeg(K * QError.Y)) + ' deg');
+  Memo1.Lines.Add('Roll error         ' +
+    FormatFloat('0.000', RadToDeg(K * QError.X)) + ' deg'); {}
+  Memo1.Lines.Add('Yaw error         ' +
+    FormatFloat('0.000', RadToDeg(K * QError.Z)) + ' deg'); {}
+end;
+
+procedure TMainForm.ApplyUDPQuaternion(const W, X, Y, Z: Single;
+  const Channels: TPowerGraphBnoData);
+var
+ vPitch,vRoll,vYaw,sinPitch:double;
+begin
+  // данные от датчика
+  QBNO055.W := W;
+  QBNO055.X := X;
+  QBNO055.Y := Y;
+  QBNO055.Z := Z;
+  QBNO055 := QBNO055.Normalize;
+
+  QModel.W :=  QBNO055.W;
+  QModel.X :=  QBNO055.Y;
+  QModel.Y :=  QBNO055.X;
+  QModel.Z := -QBNO055.Z;
+
+  // q3 = q_nb: преобразование из Body FRD в навигационную систему.
+  // Получаем направления Forward, Right и Down после поворота аппарата.
+  oX3 := QBNO055 * oX * QBNO055.Inverse;
+  oY3 := QBNO055 * oY * QBNO055.Inverse;
+  oZ3 := QBNO055 * oZ * QBNO055.Inverse;
+
+  magVecLoc.W := 0.0;
+  magVecLoc.X := Channels.Value[17];
+  magVecLoc.Y := Channels.Value[18];
+  magVecLoc.Z := Channels.Value[19];
+  magVecWord := (QBNO055 * magVecLoc * QBNO055.Inverse).Normalize;
+
+  GravVecLoc.W := 0.0;
+  GravVecLoc.X := Channels.Value[20];
+  GravVecLoc.Y := Channels.Value[21];
+  GravVecLoc.Z := Channels.Value[22];
+  GravVecWord := (QBNO055 * GravVecLoc * QBNO055.Inverse).Normalize;
+
 
   redrawI(Image1, muxyz1, fixyz1);
   redrawI(Image2, muxyz2, fixyz2);
   redrawI(Image3, muxyz3, fixyz3);
   redrawI(Image4, muxyz4, fixyz4);
+
+  RedrawQ(Image1,muxyz1,fixyz4,QBNO055,'X','Y','Z'); // Рисуем оси кватерниона
+  RedrawQ(Image2,muxyz2,fixyz4,QBNO055,'X','Y','Z'); // Рисуем оси кватерниона
+  RedrawQ(Image3,muxyz3,fixyz4,QBNO055,'X','Y','Z'); // Рисуем оси кватерниона
+  RedrawQ(Image4,muxyz4,fixyz4,QBNO055,'X','Y','Z'); // Рисуем оси кватерниона
+
+  RedrawQ(Image1,muxyz1,fixyz4,FQTarget,'qfX','qfY','qfZ'); // Рисуем оси кватерниона
+  RedrawQ(Image2,muxyz2,fixyz4,FQTarget,'qfX','qfY','qfZ'); // Рисуем оси кватерниона
+  RedrawQ(Image3,muxyz3,fixyz4,FQTarget,'qfX','qfY','qfZ'); // Рисуем оси кватерниона
+  RedrawQ(Image4,muxyz4,fixyz4,FQTarget,'qfX','qfY','qfZ'); // Рисуем оси кватерниона
+
+
+  QBNO055:=QBNO055.Normalize;
+
+ // Вычисляем синус тангажа (критическое значение для блокировки)
+  with QBNO055 do
+    sinPitch := 2.0 * (w * y - z * x);
+
+  // Проверка на блокировку кардана (Gimbal lock)
+  // Если sinPitch близок к ±1, значит тангаж = ±90°
+  if Abs(sinPitch) >= 1.0 - 1e-6 then
+  begin
+    // Блокировка кардана! Тангаж = ±90°
+    // В этом случае крен и рыскание становятся неразличимыми
+    vPitch := Arcsin(sinPitch) * (180.0 / Pi);  // ±90°
+
+    // При блокировке обнуляем крен и вычисляем только рыскание
+    vRoll := 0.0;
+
+    // Вычисляем рыскание (Yaw) по упрощенной формуле
+    with QBNO055 do
+      vYaw := ArcTan2(2.0 * (w * z - x * y), 1.0 - 2.0 * (y * y + z * z)) * (180.0 / Pi);
+  end
+  else
+  begin
+    // Нормальный режим - все углы вычисляются однозначно
+    with QBNO055 do
+    begin
+      vPitch := Arcsin(sinPitch) * (180.0 / Pi);
+
+      vRoll := ArcTan2(2.0 * (w * x + y * z),
+                       1.0 - 2.0 * (x * x + y * y)) * (180.0 / Pi);
+
+      vYaw := ArcTan2(2.0 * (w * z + x * y),
+                      1.0 - 2.0 * (y * y + z * z)) * (180.0 / Pi);
+    end;
+  end;
+
+  // Вывод результатов
+  Pitch.Caption := 'Pitch  ' + FormatFloat('0.000000', vPitch);
+  Roll.Caption  := 'Roll   ' + FormatFloat('0.000000', vRoll);
+  Yaw.Caption   := 'Yaw    ' + FormatFloat('0.000000', vYaw);
+
+
+  // Raw BNO055 quaternion after transport decoding and normalization.
+  QuatW.Caption := 'qW  ' + FormatFloat('0.000000', QBNO055.W);
+  QuatX.Caption := 'qX  ' + FormatFloat('0.000000', QBNO055.X);
+  QuatY.Caption := 'qY  ' + FormatFloat('0.000000', QBNO055.Y);
+  QuatZ.Caption := 'qZ  ' + FormatFloat('0.000000', QBNO055.Z);
+
+  Memo1.Lines.BeginUpdate;
+  try
+    Memo1.Clear;
+    // Channels written with SetCHANNELS_RAW: display without scaling.
+    Memo1.Lines.Add('Ch09 BNO055CalSys     ' + IntToStr(Channels.Raw[9]));
+    Memo1.Lines.Add('Ch10 BNO055CalGyro    ' + IntToStr(Channels.Raw[10]));
+    Memo1.Lines.Add('Ch11 BNO055CalAccel   ' + IntToStr(Channels.Raw[11]));
+    Memo1.Lines.Add('Ch12 BNO055CalMag     ' + IntToStr(Channels.Raw[12]));
+    Memo1.Lines.Add('Ch13 BNO055DataReady  ' + IntToStr(Channels.Raw[13]));
+    Memo1.Lines.Add('Ch14 BNO055DataOk     ' + IntToStr(Channels.Raw[14]));
+    Memo1.Lines.Add('Ch15 BNO055RtStep     ' + IntToStr(Channels.Raw[15]));
+    Memo1.Lines.Add('Ch16 MSPOrangeValid   ' + IntToStr(Channels.Raw[16]));
+
+    // Channels written with SetCHANNELS: display restored physical values.
+    Memo1.Lines.Add('Ch17 BNO055MagX       ' +
+      FormatFloat('0.000000', Channels.Value[17]) + ' uT');
+    Memo1.Lines.Add('Ch18 BNO055MagY       ' +
+      FormatFloat('0.000000', Channels.Value[18]) + ' uT');
+    Memo1.Lines.Add('Ch19 BNO055MagZ       ' +
+      FormatFloat('0.000000', Channels.Value[19]) + ' uT');
+
+    Memo1.Lines.Add('Ch20 GravityX         ' +
+      FormatFloat('0.000000', Channels.Value[20]) + ' m/s2');
+    Memo1.Lines.Add('Ch21 GravityY         ' +
+      FormatFloat('0.000000', Channels.Value[21]) + ' m/s2');
+    Memo1.Lines.Add('Ch22 GravityZ         ' +
+      FormatFloat('0.000000', Channels.Value[22]) + ' m/s2');
+
+    Memo1.Lines.Add('Ch23 BNO055GyroX      ' +
+      FormatFloat('0.000000', Channels.Value[23]) + ' d/s');
+    Memo1.Lines.Add('Ch24 BNO055GyroY      ' +
+      FormatFloat('0.000000', Channels.Value[24]) + ' d/s');
+    Memo1.Lines.Add('Ch25 BNO055GyroZ      ' +
+      FormatFloat('0.000000', Channels.Value[25]) + ' d/s');
+
+    Memo1.Lines.Add('Ch26 BNO055Heading    ' +
+      FormatFloat('0.000000', Channels.Value[26]) + ' deg');
+    Memo1.Lines.Add('Ch27 BNO055Roll       ' +
+      FormatFloat('0.000000', Channels.Value[27]) + ' deg');
+    Memo1.Lines.Add('Ch28 BNO055Pitch      ' +
+      FormatFloat('0.000000', Channels.Value[28]) + ' deg');
+
+    // Quaternion is displayed after physical scaling and normalization.
+    Memo1.Lines.Add('Ch29 qW               ' +
+      FormatFloat('0.000000', QBNO055.W));
+    Memo1.Lines.Add('Ch30 qX               ' +
+      FormatFloat('0.000000', QBNO055.X));
+    Memo1.Lines.Add('Ch31 qY               ' +
+      FormatFloat('0.000000', QBNO055.Y));
+    Memo1.Lines.Add('Ch32 qZ               ' +
+      FormatFloat('0.000000', QBNO055.Z));
+
+    // если есть расчет на цель, то считаем углы для руления
+    UpdateTargetAndErrors;
+  finally
+    Memo1.Lines.EndUpdate;
+  end;
+
+
+
 end;
 
-procedure TMainForm.UpdateQuaternionAxes;
-begin
-  // q3 = q_nb: преобразование из Body FRD в навигационную систему.
-  // Получаем направления Forward, Right и Down после поворота аппарата.
-  oX3 := q3 * oX * q3.Inverse;
-  oY3 := q3 * oY * q3.Inverse;
-  oZ3 := q3 * oZ * q3.Inverse;
-end;
 
 procedure TMainForm.JoystickTimer(Sender: TObject);
 const
@@ -276,145 +523,13 @@ begin
 
   Axis := TPoint3D.Create(DX / Angle, DY / Angle, DZ / Angle);
   DeltaQ := TQuaternion.Create(Axis, Angle);
-  q3 := (q3 * DeltaQ).Normalize;
-  UpdateQuaternionAxes;
+  QBodyDjo := (QBodyDjo * DeltaQ).Normalize;
+//  UpdateQuaternionAxes;
 
   redrawI(Image1, muxyz1, fixyz1);
   redrawI(Image2, muxyz2, fixyz2);
   redrawI(Image3, muxyz3, fixyz3);
   redrawI(Image4, muxyz4, fixyz4);
-end;
-
-var
-  kbufer : array[0..20] of char;  // кольцевой буфер
-
-procedure shbuf;
-var
-  i:integer;
-begin
-  for i:= 0 to 19 do
-    kbufer[i]:=kbufer[i+1];
-end;
-
-procedure TMainForm.OnRead(Sender: TObject; ReadBytes: array of Byte);
-var
- i,j:integer;
- dw:dword;
- sm:Smallint;
- w:word;
- st,st1:string[20];
-begin
-//  FillChar(kbufer,sizeof(kbufer),0);
-  for i := Low(ReadBytes) to High(ReadBytes) do
-  begin
-    if (ReadBytes[i]>=byte('0'))or(ReadBytes[i]=13) then begin
-      shbuf;
-      kbufer[19]:=char(ReadBytes[i]);
-
-      if kbufer[19]=#13 then begin
-        st:='';
-        for j:=0 to 18 do
-          if kbufer[j]>#0 then
-            st:=st+char(kbufer[j]);
-        FillChar(kbufer,sizeof(kbufer),0);
-
-               // глобальная ось X
-        if (st[1]='X')and(st[2]>='0')and(st[2]<='2') then begin
-          dw:=hextoint(copy(st,3,8));
-          OXl[byte(st[2])-byte('0')]:=MCHPtoIEEE(dw);
-        end;
-
-        // глобальная ось Y
-        if (st[1]='Y')and(st[2]>='0')and(st[2]<='2') then begin
-          dw:=hextoint(copy(st,3,8));
-          OYl[byte(st[2] )-byte('0')]:=MCHPtoIEEE(dw);
-        end;
-
-        // глобальная ось Z
-        if (st[1]='Z')and(st[2]>='0')and(st[2]<='2') then begin
-          dw:=hextoint(copy(st,3,8));
-          OZl[byte(st[2])-byte('0')]:=MCHPtoIEEE(dw);
-        end;
-
-        // фильтрованное смещение ноля гироскопа
-        if (st[1]='g')and(st[2]>='0')and(st[2]<='2') then begin
-          dw:=hextoint(copy(st,3,8));
-          GyroZeroFiltr[byte(st[2])-byte('0')]:=MCHPtoIEEE(dw);
-        end;
-
-        // фильтрованый вектор гравитации с датчика ускорения
-        if (st[1]='f')and(st[2]>='0')and(st[2]<='2') then begin
-          dw:=hextoint(copy(st,3,8));
-          AccFiltr[byte(st[2])-byte('0')]:=MCHPtoIEEE(dw);
-        end;
-
-        // фильтрованый вектор мнимого ускорения в глобальных координатах без ускорения свободного падения
-        if (st[1]='w')and(st[2]>='0')and(st[2]<='2') then begin
-          dw:=hextoint(copy(st,3,8));
-          WAccFiltr[byte(st[2])-byte('0')]:=MCHPtoIEEE(dw);
-        end;
-
-        // вектор мнимого ускорения в глобальных координатах без ускорения свободного падения
-        if (st[1]='W')and(st[2]>='0')and(st[2]<='2') then begin
-          dw:=hextoint(copy(st,3,8));
-          WAcc[byte(st[2])-byte('0')]:=MCHPtoIEEE(dw);
-        end;
-
-        // Вектор гравитации с датчика ускорения в единицах g=9.819 (Питер)
-        if (st[1]='A')and(st[2]>='0')and(st[2]<='2') then begin
-          dw:=hextoint(copy(st,3,8));
-          ACC_XYZ[byte(st[2])-byte('0')]:=MCHPtoIEEE(dw);
-        end;
-
-        // Вектор гравитации с датчика ускорения нормализованый до 1
-        if (st[1]='S')and(st[2]>='0')and(st[2]<='2') then begin
-          dw:=hextoint(copy(st,3,8));
-          AccNorm[byte(st[2])-byte('0')]:=MCHPtoIEEE(dw);
-        end;
-
-        // Вектор гравитации с датчика ускорения чистаые данные
-        if (st[1]='i')and(st[2]>='0')and(st[2]<='2') then begin
-          dw:=hextoint(copy(st,3,8));
-          iACC[byte(st[2])-byte('0')]:=integer(dw);
-        end;
-
-        // Вектор угловой скорости
-        if (st[1]='G')and(st[2]>='0')and(st[2]<='2') then begin
-          dw:=hextoint(copy(st,3,8));
-          iGir[byte(st[2])-byte('0')]:=integer(dw);
-        end;
-
-
-        if (st[1]='P')and(st[2]>='0')and(st[2]<='2') then begin
-          dw:=hextoint(copy(st,3,8));
-          pind[byte(st[2])-byte('0')]:=MCHPtoIEEE(dw);
-        end;
-
-
-
-        // Скорости полученные интегрированием
-        if (st[1]='D')and(st[2]>='0')and(st[2]<='2') then begin
-          dw:=hextoint(copy(st,3,8));
-          SPD_XYZ[byte(st[2])-byte('0')]:=MCHPtoIEEE(dw);
-        end;
-
-        // Путь полученные интегрированием  скорости
-        if (st[1]='d')and(st[2]>='0')and(st[2]<='2') then begin
-          st1:=copy(st,3,8);
-          dw:=hextoint(st1);
-          DIST_XYZ[byte(st[2])-byte('0')]:=MCHPtoIEEE(dw);
-        end;
-
-        if (st[1]='t') then begin
-          redraw;
-        end;
-
-
-
-      end; //if kbufer[19]=13 then begin
-
-    end;
-    end;
 end;
 
 function TMainForm.d2x;
@@ -452,7 +567,14 @@ if abs(z)>5 then exit;
 end;
 
 
-procedure TMainForm.Line3D;
+procedure TMainForm.Line3D(
+  Image:TImage;
+  muxyz:tvec3;
+  fixyz:tvec3;
+  x1,y1,z1,x2,y2,z2:double;
+  Color:TColor;
+  Width:integer;
+  st:string='');
 var
  x,y:integer;
 begin
@@ -472,84 +594,40 @@ procedure TMainForm.redrawI(Image: TImage; muxyz, fixyz: tvec3);
 begin
   with image.Canvas do FillRect(Rect(0,0,Width,Height));
 
-  // глобальные оси
-  Line3D(Image,muxyz,fixyz, 0,0,0,1,0,0,clRed  ,1,'X');
-  Line3D(Image,muxyz,fixyz, 0,0,0,0,1,0,clGreen,1,'Y');
-  Line3D(Image,muxyz,fixyz, 0,0,0,0,0,1,clBlue ,1,'Z');  {}
+  // Тонкие оси навигационной системы.
+  Line3D(Image,muxyz,fixyz, 0,0,0,1,0,0,clRed  ,1,'E');
+  Line3D(Image,muxyz,fixyz, 0,0,0,0,1,0,clGreen,1,'N');
+  Line3D(Image,muxyz,fixyz, 0,0,0,0,0,1,clBlue ,1,'U');
 
-  //  три вектора локальных осей
-  Line3D(Image,muxyz,fixyz,0,0,0,OXl[0],OXl[1],OXl[2],clRed,  3,'X');
-  Line3D(Image,muxyz,fixyz,0,0,0,OYl[0],OYl[1],OYl[2],clGreen,3,'Y');
-  Line3D(Image,muxyz,fixyz,0,0,0,OZl[0],OZl[1],OZl[2],clBlue, 3,'Z');
+  // Толстые оси текущей ориентации платформы.
+//  with oX3 do Line3D(Image,muxyz,fixyz,0,0,0,x,y,z,clRed,    3,'X');
+//  with oY3 do Line3D(Image,muxyz,fixyz,0,0,0,x,y,z,clGreen,  3,'Y');
+//  with oZ3 do Line3D(Image,muxyz,fixyz,0,0,0,x,y,z,clBlue,   3,'Z');
 
-  //  три вектора локальных осей
-  with oX1 do Line3D(Image,muxyz,fixyz,0,0,0,x,y,z,clRed,    3,'X');
-  with oY1 do Line3D(Image,muxyz,fixyz,0,0,0,x,y,z,clGreen,  3,'Y');
-  with oZ1 do Line3D(Image,muxyz,fixyz,0,0,0,x,y,z,clBlue,   3,'Z');
-  //  три вектора локальных осей
-  with oX2 do Line3D(Image,muxyz,fixyz,0,0,0,x,y,z,clRed,    3,'X');
-  with oY2 do Line3D(Image,muxyz,fixyz,0,0,0,x,y,z,clGreen,  3,'Y');
-  with oZ2 do Line3D(Image,muxyz,fixyz,0,0,0,x,y,z,clBlue,   3,'Z');
-  //  три вектора локальных осей
-  with oX3 do Line3D(Image,muxyz,fixyz,0,0,0,x,y,z,clRed,    3,'X');
-  with oY3 do Line3D(Image,muxyz,fixyz,0,0,0,x,y,z,clGreen,  3,'Y');
-  with oZ3 do Line3D(Image,muxyz,fixyz,0,0,0,x,y,z,clBlue,   3,'Z');
-  //  три вектора локальных осей
-  with q1 do Line3D(Image,muxyz,fixyz,0,0,0,x,y,z,clBlack,   1,'q1');
-  with q2 do Line3D(Image,muxyz,fixyz,0,0,0,x,y,z,clBlack,   1,'q2');
-  with q3 do Line3D(Image,muxyz,fixyz,0,0,0,x,y,z,clBlack,   1,'q3');
-  {}
+  // Вектор магнитного поля
+  with magVecWord do Line3D(Image,muxyz,fixyz,0,0,0,x,y,z,clLime,    3,'Mag');
 
-  //  проекция вектора гравитации на глобальные оси
-  Line3D(Image,muxyz,fixyz,0,0,0,
-    (-OXl[0]*AccFiltr[0]-OYl[0]*AccFiltr[1]+OZl[0]*AccFiltr[2])/gpiter,
-    (-OXl[1]*AccFiltr[0]-OYl[1]*AccFiltr[1]+OZl[1]*AccFiltr[2])/gpiter,
-    -(-OXl[2]*AccFiltr[0]-OYl[2]*AccFiltr[1]+OZl[2]*AccFiltr[2])/gpiter,
-    clRed,  3,'G');
-//  Line3D(Image,muxyz,fixyz,0,0,0,OYl[0],OYl[1],OYl[2],clGreen,3,'Y');
-//  Line3D(Image,muxyz,fixyz,0,0,0,OZl[0],OZl[1],OZl[2],clBlue, 3,'Z');
+  // Вектор гравитации
+  with GravVecWord do Line3D(Image,muxyz,fixyz,0,0,0,x,y,z,clBlack,    3,'Grav');
 
-
-
-
-  {Line3D(Image,muxyz,fixyz,0,0,0,ACC_XYZ[0]/gpiter,ACC_XYZ[1]/gpiter,ACC_XYZ[2]/gpiter,clBlue, 3,'rACC_XYZ');
-  Line3D(Image,muxyz,fixyz,0,0,0,AccNorm[0],AccNorm[1],AccNorm[2],clBlue, 3,'GAcc');
-  {
-  rACC_XYZGL[0]:= rACC_XYZ[0]*OXl[0]+ rACC_XYZ[1]*OYl[0]- rACC_XYZ[2]*OZl[0];
-  rACC_XYZGL[1]:= rACC_XYZ[0]*OXl[1]+ rACC_XYZ[1]*OYl[1]- rACC_XYZ[2]*OZl[1];
-  rACC_XYZGL[2]:= rACC_XYZ[0]*OXl[2]+ rACC_XYZ[1]*OYl[2]- rACC_XYZ[2]*OZl[2];
-  {}{
-  rACC_XYZGL[0]:=-rACC_XYZGL[0]/gpiter;
-  rACC_XYZGL[1]:=-rACC_XYZGL[1]/gpiter;
-  rACC_XYZGL[2]:=-rACC_XYZGL[2]/gpiter;
-  {}
-//  Line3D(Image,muxyz,fixyz,0,0,0,DIST_XYZ[0],DIST_XYZ[1],DIST_XYZ[2],clAqua, 3,'W');
-{}
 end;
 
-procedure TMainForm.TrackBar1Change(Sender: TObject);
+// рисуем кватернион на Image с подписями осей
+procedure TMainForm.RedrawQ(Image:TImage;muxyz:tvec3;fixyz:tvec3;Quater: TQuaternion; stx, sty,
+  stz: string);
 var
-  t:Single;
+  oXq,oYq,oZq : TQuaternion;  // оси
 begin
-  t:=TrackBar1.Position/100;
+  oXq := Quater * oX * Quater.Inverse;
+  oYq := Quater * oY * Quater.Inverse;
+  oZq := Quater * oZ * Quater.Inverse;
 
-  q1  := TQuaternion.Create(TPoint3D.Create(1,0,1),-185*deg);
-  q2  := TQuaternion.Create(TPoint3D.Create(0,1,1),50*deg);
-  q3  := q3.Slerp(q1,q2,t);
+  // Толстые оси текущей ориентации платформы.
+  with oXq do Line3D(Image,muxyz,fixyz,0,0,0,x,y,z,TColor($5050A7),  2, stx);
+  with oYq do Line3D(Image,muxyz,fixyz,0,0,0,x,y,z,TColor($208020),  2, sty);
+  with oZq do Line3D(Image,muxyz,fixyz,0,0,0,x,y,z,TColor($FF5050),  2, stz);
 
-  oX1:=q1*oX*q1.Inverse;
-  oY1:=q1*oY*q1.Inverse;
-  oZ1:=q1*oZ*q1.Inverse;
 
-  oX2:=q2*oX*q2.Inverse;
-  oY2:=q2*oY*q2.Inverse;
-  oZ2:=q2*oZ*q2.Inverse;
-
-  oX3:=q3*oX*q3.Inverse;
-  oY3:=q3*oY*q3.Inverse;
-  oZ3:=q3*oZ*q3.Inverse;
-
-  redraw;
 end;
 
 procedure TMainForm.redraw;
@@ -558,123 +636,6 @@ begin
   redrawI(Image2,muxyz2,fixyz2);
   redrawI(Image3,muxyz3,fixyz3);
   redrawI(Image4,muxyz4,fixyz4);
-
-
-  OXl2.Caption:=FormatFloat('0.####',ArcSin(OXl[2])/deg);
-  OYl2.Caption:=FormatFloat('0.####',ArcSin(OYl[2])/deg);
-  OZl0.Caption:=FormatFloat('0.####',ArcSin(OZl[0])/deg);
-  OZl1.Caption:=FormatFloat('0.####',ArcSin(OZl[1])/deg);
-
-  AccFiltr0.Caption:='AccFiltrX '+FormatFloat('0.####',AccFiltr[0]);
-  AccFiltr1.Caption:='AccFiltrY '+FormatFloat('0.####',AccFiltr[1]);
-  AccFiltr2.Caption:='AccFiltrZ '+FormatFloat('0.####',AccFiltr[2]);
-
-  iACC0.Caption:='iACCX '+inttostr(iACC[0]);
-  iACC1.Caption:='iACCY '+inttostr(iACC[1]);
-  iACC2.Caption:='iACCZ '+inttostr(iACC[2]);
-
-  iGir0.Caption:='iGirX '+inttostr(iGir[0]);
-  iGir1.Caption:='iGirY '+inttostr(iGir[1]);
-  iGir2.Caption:='iGirZ '+inttostr(iGir[2]);
-
-
-  GyroZeroFiltr0.Caption:='GZF '+FormatFloat('0.####',GyroZeroFiltr[0]);
-  GyroZeroFiltr1.Caption:='GZF '+FormatFloat('0.####',GyroZeroFiltr[1]);
-  GyroZeroFiltr2.Caption:='GZF '+FormatFloat('0.####',GyroZeroFiltr[2]);
-
-  WAccFiltr0.Caption:='WAccFiltr '+FormatFloat('0.####',WAccFiltr[0]);
-  WAccFiltr1.Caption:='WAccFiltr '+FormatFloat('0.####',WAccFiltr[1]);
-  WAccFiltr2.Caption:='WAccFiltr '+FormatFloat('0.####',WAccFiltr[2]);
-
-  pind0.Caption:=FormatFloat('0.####',pind[0]);
-  pind1.Caption:=FormatFloat('0.####',pind[1]);
-  pind2.Caption:=FormatFloat('0.####',pind[2]);
-
-  Memo1.Lines.BeginUpdate;
-
-  Memo1.Lines.Clear;
-
-  Memo1.Lines.Add(FormatFloat('0.####',SPD_XYZ[0]));
-  Memo1.Lines.Add(FormatFloat('0.####',SPD_XYZ[1]));
-  Memo1.Lines.Add(FormatFloat('0.####',SPD_XYZ[2]));  {}
-
-  Memo1.Lines.Add(FormatFloat('0.####',DIST_XYZ[0]));
-  Memo1.Lines.Add(FormatFloat('0.####',DIST_XYZ[1]));
-  Memo1.Lines.Add(FormatFloat('0.####',DIST_XYZ[2]));  {}
-
-  Memo2.Lines.Add(FormatFloat('0.####',DIST_XYZ[0])+';'+
-                  FormatFloat('0.####',DIST_XYZ[1])+';'+
-                  FormatFloat('0.####',DIST_XYZ[2]));
-
-  Memo1.Lines.EndUpdate;
-
-
-  if GrafForm=nil then exit;
-
-{  GrafForm.Series1.AddXY(ng,WAccFiltr[0]);
-  GrafForm.Series2.AddXY(ng,WAccFiltr[1]);
-  GrafForm.Series3.AddXY(ng,WAccFiltr[2]); {}
-
-{  GrafForm.Series1.AddXY(ng,SPD_XYZ[0]);
-  GrafForm.Series2.AddXY(ng,SPD_XYZ[1]);
-  GrafForm.Series3.AddXY(ng,SPD_XYZ[2]);
-
-  GrafForm.Series4.AddXY(ng,DIST_XYZ[0]);
-  GrafForm.Series5.AddXY(ng,DIST_XYZ[1]);
-  GrafForm.Series6.AddXY(ng,DIST_XYZ[2]);
-
-  with GrafForm.Series1 do if count>40 then delete(0);
-  with GrafForm.Series2 do if count>40 then delete(0);
-  with GrafForm.Series3 do if count>40 then delete(0);
-  with GrafForm.Series4 do if count>40 then delete(0);
-  with GrafForm.Series5 do if count>40 then delete(0);
-  with GrafForm.Series6 do if count>40 then delete(0);   {}
-
-  inc(ng);
-end;
-
-procedure TMainForm.BtClosePortClick(Sender: TObject);
-begin
-  Port.free;
-end;
-
-procedure TMainForm.BtOpenPortClick(Sender: TObject);
-begin
-  Port := TComPort.Create(ComboCOM.ItemIndex, br115200);
-  Port.OnRead := OnRead;
-end;
-
-procedure TMainForm.Button1Click(Sender: TObject);
-begin
-  GrafForm.Show;
-end;
-
-procedure TMainForm.Button2Click(Sender: TObject);
-
-begin
-  {интерполяция здесь
-  //https://russianblogs.com/article/1756381934/
-  https://www.youtube.com/redirect?event=video_description&redir_token=QUFFLUhqa3lQdi1pbXF6MHhBLUJyU2VjT1A0ZlhTaHNNd3xBQ3Jtc0ttM0pmZUl0RFlveDJCUWxoNzdSWUk3NXlud0p1UWF6VGN3QlFvMUhtRi1vVW9qai1YRHlqaGxFTlh1YkU1Y1NJUW1BNlRHY0FCbnBtRU05RWFqRWg0ZUlpbGlqRm96UmE0ZHFVRUtNTWVnVkVoeXF3bw&q=https%3A%2F%2Fgithub.com%2FEgoMoose%2FExampleDump%2Fblob%2Fmaster%2FScripts%2Fslerp.lua
-  https://github.com/EgoMooseOldProjects/ExampleDump/blob/master/Scripts/slerp.lua
-   {}
-
-  q1  := TQuaternion.Create(TPoint3D.Create(0,0,1),5*deg);
-  q2  := TQuaternion.Create(TPoint3D.Create(0,1,1),5*deg);
-  q3  := TQuaternion.Create(TPoint3D.Create(1,1,1),5*deg);
-
-  oX1:=q1*oX*q1.Inverse;
-  oY1:=q1*oY*q1.Inverse;
-  oZ1:=q1*oZ*q1.Inverse;
-
-  oX2:=q2*oX*q2.Inverse;
-  oY2:=q2*oY*q2.Inverse;
-  oZ2:=q2*oZ*q2.Inverse;
-
-  oX3:=q3*oX*q3.Inverse;
-  oY3:=q3*oY*q3.Inverse;
-  oZ3:=q3*oZ*q3.Inverse;
-
-  redraw;
 end;
 
 end.

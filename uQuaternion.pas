@@ -242,12 +242,16 @@ begin
   if t<0 then t:=0;
   if t>1 then t:=1;
 
+    fromq := fromq.Normalize;
+    toq := toq.Normalize;
 	cosAngle := Dot(fromq, toq);
 
     if cosAngle < 0 then begin
         cosAngle := -cosAngle;
         toq := -toq;
     end;
+
+    cosAngle := EnsureRange(cosAngle, -1.0, 1.0);
 
     if cosAngle < 0.95 then begin
 	    angle 	:= ArcCos(cosAngle);
@@ -261,7 +265,7 @@ begin
         z := fromq.z * t1 + toq.z * t2;
         w := fromq.w * t1 + toq.w * t2;
       end;
-      Result.Normalize;
+      Result := Result.Normalize;
     end else begin
 	   	Result := Lerp(fromq, toq, t)
     end
